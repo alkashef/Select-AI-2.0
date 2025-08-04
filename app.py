@@ -79,7 +79,7 @@ def initialize_session_state() -> None:
 
 def setup_page_config() -> None:
     """Configure the Streamlit page settings."""
-    st.set_page_config(page_title="Select AI", page_icon="🤖")
+    st.set_page_config(page_title="Select AI 2.0", page_icon="🤖")
     
     env_path = os.path.join(os.path.dirname(__file__), 'config', '.env')
     load_dotenv(env_path)
@@ -95,7 +95,7 @@ def render_sidebar() -> None:
             st.image(logo_path)
 
         st.markdown(
-            """<p></p><p style='color: grey; margin-bottom: 20px;'><b>Select AI</b> is a natural language to SQL assistant.</p>
+            """<p></p><p style='color: grey; margin-bottom: 20px;'><b>Select AI 2.0</b> is a natural language to SQL assistant.</p>
             <p style='color: grey; margin-bottom: 20px;'>Enter your query in natural language, the AI will generate the corresponding SQL query and execute it on Teradata.</p>""",
             unsafe_allow_html=True
         )
