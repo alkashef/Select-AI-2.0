@@ -1,7 +1,8 @@
 import os
 import sys
 from typing import Optional, Tuple
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.models.auto.tokenization_auto import AutoTokenizer
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 import torch
 from db import TeradataDatabase
 from dotenv import load_dotenv
