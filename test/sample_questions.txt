@@ -1,0 +1,11 @@
+What is the avg transaction value per transaction type?
+
+how many branches are there per governorate?
+
+What is the total transaction amount for each branch?
+
+how many deposits where made in California?
+
+List total transaction per transaction type per branch
+display branch name, transaction type, transaction total
+sort by transaction type, transaction total
