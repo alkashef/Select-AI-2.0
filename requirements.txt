@@ -1,6 +1,0 @@
-# Updated after refactor: agent.py -> ai.py, AI class
-streamlit>=1.37
-python-dotenv>=1.0
-openai>=1.30
-pytest>=8.0
-
