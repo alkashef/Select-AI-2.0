@@ -234,7 +234,7 @@ def main() -> None:
     
     try:
         # Find all targets
-    files_to_delete, dirs_to_delete = find_cleanup_targets(root_dir, include_gitignore=args.gitignore)
+        files_to_delete, dirs_to_delete = find_cleanup_targets(root_dir, include_gitignore=args.gitignore)
         
         if not files_to_delete and not dirs_to_delete:
             logger.info("No files or directories to clean up!")
