@@ -146,17 +146,28 @@ Troubleshooting:
 
 ### MCP Client Smoke Test
 
-We include a tiny client `tests/test_mcp.py` that launches the MCP server via stdio and runs a simple SQL.
+We include a tiny client `tests/test_mcp_list_tools.py` that launches the MCP server via stdio and lists tools.
 
 1) Ensure env is set (either `DATABASE_URI` or TD_* variables in `config/.env`).
 
 2) Run the client:
 
 ```cmd
-python tests\test_mcp.py
+python tests\test_mcp_list_tools.py
 ```
 
 The script will:
 - Start `teradata-mcp-server` as a subprocess with your `DATABASE_URI` (or constructs one from TD_* if not set).
-- List available tools and try to find a SQL-like tool.
-- Call it with `SELECT CURRENT_DATE;` (override via `TD_TEST_QUERY`).
+- List available tools and exit.
+
+Advanced examples:
+
+- Run a SQL via MCP:
+   ```cmd
+   python tests\test_mcp_read_query.py --sql "SELECT CURRENT_DATE;" --timeout 20
+   ```
+
+- Diagnostics (prompts/resources):
+   ```cmd
+   python tests\test_mcp_diag.py
+   ```
