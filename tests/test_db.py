@@ -12,6 +12,7 @@ Behavior:
 import os
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Make the tests folder importable when run as a script
 TESTS_DIR = Path(__file__).parent
@@ -22,6 +23,8 @@ from test_db_helper import TestDBHelper  # local slim helper
 
 
 def main() -> int:
+    # Ensure variables from config/.env are loaded into process env
+    load_dotenv(dotenv_path=Path(__file__).parent.parent / "config" / ".env")
     missing = [v for v in ["TD_HOST", "TD_NAME", "TD_USER", "TD_PASSWORD"] if not os.getenv(v)]
     if missing:
         print(f"Missing required env vars: {', '.join(missing)} (populate config/.env)")

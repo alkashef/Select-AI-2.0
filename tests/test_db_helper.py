@@ -9,6 +9,7 @@ Optional:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 from dotenv import load_dotenv
 import teradataml as tdml
@@ -17,11 +18,14 @@ from teradataml import execute_sql
 
 class TestDBHelper:
     def __init__(self) -> None:
-        load_dotenv(os.path.join("config", ".env"))
-        self.host = os.getenv("TD_HOST")
-        self.database = os.getenv("TD_NAME")
-        self.user = os.getenv("TD_USER")
-        self.password = os.getenv("TD_PASSWORD")
+        # Load env from repo-local config/.env regardless of CWD
+        env_path = Path(__file__).resolve().parent.parent / "config" / ".env"
+        load_dotenv(env_path)
+        # Read required values with a couple of friendly aliases
+        self.host = os.getenv("TD_HOST") or os.getenv("TERADATA_HOST")
+        self.database = os.getenv("TD_NAME") or os.getenv("TD_DATABASE") or os.getenv("TERADATA_DB")
+        self.user = os.getenv("TD_USER") or os.getenv("TERADATA_USER")
+        self.password = os.getenv("TD_PASSWORD") or os.getenv("TERADATA_PASSWORD")
         self.port = os.getenv("TD_PORT", "1025")
         self.connection = None
 
@@ -47,7 +51,8 @@ class TestDBHelper:
         return [{cols[i]: v for i, v in enumerate(r)} for r in rows]
 
     def _get_sample_data(self, table: str) -> str:
-        sql = f"SELECT * FROM {table} SAMPLE 3;"
+        db_qual = f"{self.database}." if self.database else ""
+        sql = f"SELECT * FROM {db_qual}{table} SAMPLE 3;"
         rs = execute_sql(sql)
         if rs.rowcount == 0:
             return "No data available"
@@ -61,10 +66,11 @@ class TestDBHelper:
     def get_schema(self) -> str:
         if not self.connection:
             raise RuntimeError("Call connect() first")
+        target_db = (self.database or "").strip()
         sql = (
             "SELECT t.tablename, c.columnname, c.columntype "
             "FROM dbc.tablesv t JOIN dbc.columnsv c ON t.tablename = c.tablename AND t.databasename = c.databasename "
-            "WHERE t.databasename = 'raven' AND t.TableKind = 'T' ORDER BY t.tablename"
+            f"WHERE t.databasename = '{target_db}' AND t.TableKind IN ('T','V') ORDER BY t.tablename, c.columnid"
         )
         td_map = {"CV": "String", "D": "Numeric", "CF": "Numeric", "I": "Integer", "F": "Float"}
         rs = execute_sql(sql)
