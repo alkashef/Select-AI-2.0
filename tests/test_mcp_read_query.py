@@ -17,7 +17,13 @@ from typing import Any, Dict
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
-from tests.mcp_helpers import load_env_from_config, print_mcp_result
+try:
+    from tests.mcp_helpers import load_env_from_config, print_mcp_result
+except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tests.mcp_helpers import load_env_from_config, print_mcp_result
 
 
 def _load_env() -> None:

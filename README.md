@@ -153,6 +153,7 @@ python tests\test_mcp_read_query.py --sql "SELECT CURRENT_DATE"
 - `tests\test_mcp_list_tools.py`: Lists available tools from the running MCP server.
 - `tests\test_mcp_diag.py`: Shows tools, prompts, and resources (HTTP session).
 - `tests\test_mcp_read_query.py`: Executes `base_readQuery` against the server.
+- `tests\test_mcp_schema_sample.py`: Lists tables in a database, prints column schema per table, and samples a few rows.
 
 All of the above use `MCP_URL` from `config/.env` (or `--url`).
 
