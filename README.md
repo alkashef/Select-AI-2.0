@@ -131,6 +131,25 @@ You should see a line like: http://localhost:8001/mcp/
 set MCP_URL=http://localhost:8001/mcp/
 ```
 
+3a) (Optional) Configure RAG workflow file in the server package:
+
+By default, the server looks for `rag_config.yml` inside the installed package under `.../teradata_mcp_server/config/rag_config.yml`.
+
+We provide a project template in `config/rag_config.yml`. You can install it into the package with:
+
+```cmd
+python scripts\rag_config.py --install-from config\rag_config.yml
+```
+
+Inspect where it lives and its contents:
+
+```cmd
+python scripts\rag_config.py --show-path
+python scripts\rag_config.py --show-config
+```
+
+If your vector store DB/table names differ, edit `config\rag_config.yml` first, then reinstall.
+
 4) Run the HTTP client smoke tests:
 
 List tools:
@@ -143,10 +162,15 @@ Diagnostics (tools/prompts/resources):
 python tests\test_mcp_diag.py
 ```
 
-Run a SQL via base_readQuery:
+Natural language RAG test (tool-only):
+
 ```cmd
-python tests\test_mcp_read_query.py --sql "SELECT CURRENT_DATE"
+python tests\test_mcp_nl.py --config tests\mcp_nl.yml --k 8
 ```
+Notes:
+- The RAG tool reads database/table/model settings from the installed `rag_config.yml`.
+- The NL test is SQL-ignorant; it only calls server tools and reads YAML.
+- If the server defaults to `demo_db`, update `rag_config.yml` or include the DB name in your NL question.
 
 ### MCP Tests (Quick Reference)
 

@@ -1,0 +1,47 @@
+version: "byom"  # Options: 'byom' or 'ivsm'
+
+databases:
+  # Database holding the user queries and embeddings
+  query_db: "BANK_DB"
+  # Database holding model + tokenizer tables
+  model_db: "BANK_DB"
+  # Database holding your vector store (chunk embeddings)
+  vector_db: "BANK_DB"
+
+tables:
+  # Table where user questions are stored
+  query_table: "user_query"
+  # Temporary table to hold query embeddings for the latest question
+  query_embedding_store: "user_query_embeddings"
+  # Vector store table containing pre-computed chunk embeddings
+  vector_table: "icici_fr_embeddings_store"
+  # BYOM model + tokenizer tables (for 'byom' mode)
+  model_table: "embeddings_models"
+  tokenizer_table: "embeddings_tokenizers"
+
+model:
+  # Embedding model id for BYOM or IVSM flows
+  model_id: "bge-small-en-v1.5"
+
+retrieval:
+  # Default number of chunks to retrieve if 'k' not provided by tool call
+  default_k: 10
+  # Maximum allowed chunks to retrieve
+  max_k: 50
+
+embedding:
+  # Vector length must match the selected model
+  vector_length: 384
+  # Column prefix used by vector_to_columns output (BYOM/IVSM flows)
+  vector_column_prefix: "emb_"
+  # Distance measure for TD_VECTORDISTANCE
+  distance_measure: "cosine"
+  # Feature column span used in similarity search
+  feature_columns: "[emb_0:emb_383]"
+
+vector_store_schema:
+  # List any metadata columns present in your vector store table.
+  # These will be selected dynamically and returned with the results.
+  metadata_fields_in_vector_store:
+    - "chunk_num"
+    - "doc_name"
