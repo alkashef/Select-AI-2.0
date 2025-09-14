@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from dotenv import load_dotenv
 import os
@@ -87,3 +87,41 @@ def resolve_mcp_url(arg_url: Optional[str], cfg: Optional[Dict[str, Any]] = None
     """
     cfg = cfg or {}
     return arg_url or cfg.get("mcp_url") or os.getenv("MCP_URL", default)
+
+
+def parse_table_names(result: Any) -> List[str]:
+    """Extract table names from a typical MCP result payload.
+
+    Supports dict payloads or JSON strings (optionally within result[0].text).
+    Returns an empty list if parsing fails.
+    """
+    payload: Dict[str, Any] | None = None
+
+    if isinstance(result, dict):
+        payload = result
+    elif isinstance(result, str):
+        try:
+            payload = json.loads(result)
+        except json.JSONDecodeError:
+            payload = None
+    else:
+        try:
+            text = getattr(result[0], "text", None) if result else None
+            if text:
+                try:
+                    payload = json.loads(text)
+                except json.JSONDecodeError:
+                    payload = None
+        except Exception:
+            payload = None
+
+    names: List[str] = []
+    rows_list = (payload or {}).get("results", [])
+    for row in rows_list:
+        try:
+            name = row.get("TableName") or row.get("tablename") or row.get("name")
+            if name:
+                names.append(name)
+        except Exception:
+            continue
+    return names

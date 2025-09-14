@@ -24,6 +24,7 @@ try:
         print_mcp_result,
         load_yaml_config,
         resolve_mcp_url,
+        parse_table_names,
     )
 except ImportError:
     import sys
@@ -34,6 +35,7 @@ except ImportError:
         print_mcp_result,
         load_yaml_config,
         resolve_mcp_url,
+        parse_table_names,
     )
     
 
@@ -51,7 +53,7 @@ async def run(url: str, database: str, limit_tables: int, rows_per_table: int, t
 
     async with client.session("mcp_server") as session:
         tools = await load_mcp_tools(session)
-        tools_by_name: Dict[str, Any] = {t.name: t for t in tools}
+    tools_by_name: Dict[str, Any] = {t.name: t for t in tools}
         # Require dedicated server tools (no SQL fallbacks)
         table_list_tool = tools_by_name.get("base_tableList")
         col_desc_tool = tools_by_name.get("base_columnDescription")
@@ -68,17 +70,8 @@ async def run(url: str, database: str, limit_tables: int, rows_per_table: int, t
         else:
             print(f"Listing tables in {database} via base_tableList...")
             tables_res = await asyncio.wait_for(table_list_tool.ainvoke({"database_name": database}), timeout=timeout)
-            # Extract names from structured content
-            table_names = []
-            try:
-                from json import loads
-                payload = tables_res if isinstance(tables_res, dict) else loads(tables_res) if isinstance(tables_res, str) else None
-                rows_list = (payload or {}).get("results", [])
-                for row in rows_list:
-                    name = row.get("TableName") or row.get("tablename") or row.get("name")
-                    if name:
-                        table_names.append(name)
-            except Exception:
+            table_names = parse_table_names(tables_res)
+            if not table_names:
                 print_mcp_result(tables_res)
                 print("Could not parse table names from base_tableList response.")
                 return 1
