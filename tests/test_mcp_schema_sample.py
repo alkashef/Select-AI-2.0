@@ -1,11 +1,11 @@
-"""HTTP MCP script: extract schema and sample rows from a database.
+"""HTTP MCP script (tool-only): extract schema and sample rows.
 
 Usage (Windows cmd):
-  python tests\test_mcp_schema_sample.py --database BANK_DB --limit 3 --rows 5
+    python tests\test_mcp_schema_sample.py --database BANK_DB --limit 3 --rows 5
 
-Requires:
-- MCP server running separately (see README) and `MCP_URL` configured.
-- Database name via `--database` or `TD_NAME` in config/.env.
+Requirements:
+- MCP server running separately (HTTP) and `MCP_URL` set or passed via --url.
+- No SQL. Uses only MCP tools: base_tableList, base_columnDescription, base_tablePreview.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -26,7 +26,7 @@ except ImportError:
     from tests.mcp_helpers import load_env_from_config, print_mcp_result
 
 
-async def run(url: str, database: str, limit: int, rows: int, tables_filter: List[str] | None, timeout: float) -> int:
+async def run(url: str, database: str, limit: int, rows: int, tables_filter: Optional[List[str]], timeout: float) -> int:
     client = MultiServerMCPClient({
         "mcp_server": {
             "url": url,
@@ -39,27 +39,23 @@ async def run(url: str, database: str, limit: int, rows: int, tables_filter: Lis
         tools = await load_mcp_tools(session)
         tools_by_name: Dict[str, Any] = {t.name: t for t in tools}
 
-        if "base_readQuery" not in tools_by_name:
-            print("Tool 'base_readQuery' not available on the MCP server.")
+        table_list_tool = tools_by_name.get("base_tableList")
+        col_desc_tool = tools_by_name.get("base_columnDescription")
+        preview_tool = tools_by_name.get("base_tablePreview")
+        if not (table_list_tool and col_desc_tool and preview_tool):
+            print("Missing required MCP tools: base_tableList, base_columnDescription, base_tablePreview.")
             return 1
-        read_query = tools_by_name["base_readQuery"]
 
         # 1) List tables in the database (limit for sanity)
         if tables_filter:
             table_names = tables_filter
             print(f"Using provided tables: {', '.join(table_names)}")
         else:
-            sql_tables = (
-                f"SELECT TOP {limit} TableName, TableKind "
-                f"FROM DBC.TablesV WHERE DatabaseName='{database}' ORDER BY TableName"
-            )
-            print(f"\nListing up to {limit} tables in {database}...")
-            tables_res = await asyncio.wait_for(read_query.ainvoke({"sql": sql_tables}), timeout=timeout)
-            # Expect a JSON payload with 'results'
-            table_names = []
+            print(f"\nListing tables in {database} via base_tableList...")
+            tables_res = await asyncio.wait_for(table_list_tool.ainvoke({"database_name": database}), timeout=timeout)
+            table_names: List[str] = []
             try:
                 from json import loads
-
                 payload = tables_res if isinstance(tables_res, dict) else loads(tables_res) if isinstance(tables_res, str) else None
                 rows_list = (payload or {}).get("results", [])
                 for row in rows_list:
@@ -67,40 +63,34 @@ async def run(url: str, database: str, limit: int, rows: int, tables_filter: Lis
                     if name:
                         table_names.append(name)
             except Exception:
-                # Fallback: just pretty-print and bail
                 print_mcp_result(tables_res)
-                print("Could not parse table names from response.")
+                print("Could not parse table names from base_tableList response.")
                 return 1
 
             if not table_names:
                 print("No tables found or failed to parse results.")
                 return 1
 
-            print(f"Found {len(table_names)} tables (showing up to {limit}):")
+            # Apply client-side limit
+            table_names = table_names[:limit]
+            print(f"Found {len(table_names)} tables (after limiting to {limit}):")
             for t in table_names:
                 print(f"- {t}")
 
         # 2) For each table, fetch column schema and sample data
         for tname in table_names:
             print(f"\n=== {database}.{tname} ===")
-            # Columns
-            sql_cols = (
-                "SELECT ColumnId, ColumnName, ColumnType, ColumnLength, "
-                "DecimalTotalDigits, DecimalFractionalDigits, Nullable, ColumnFormat "
-                f"FROM DBC.ColumnsV WHERE DatabaseName='{database}' AND TableName='{tname}' "
-                "ORDER BY ColumnId"
-            )
+            # Columns via tool
             try:
-                cols_res = await asyncio.wait_for(read_query.ainvoke({"sql": sql_cols}), timeout=timeout)
+                cols_res = await asyncio.wait_for(col_desc_tool.ainvoke({"database_name": database, "obj_name": tname}), timeout=timeout)
                 print("-- Schema --")
                 print_mcp_result(cols_res)
             except asyncio.TimeoutError:
                 print("Schema query timed out.")
 
-            # Sample rows
-            sql_sample = f"SELECT TOP {rows} * FROM {database}.{tname}"
+            # Sample rows via preview tool
             try:
-                data_res = await asyncio.wait_for(read_query.ainvoke({"sql": sql_sample}), timeout=timeout)
+                data_res = await asyncio.wait_for(preview_tool.ainvoke({"database_name": database, "table_name": tname}), timeout=timeout)
                 print("-- Sample Rows --")
                 print_mcp_result(data_res)
             except asyncio.TimeoutError:
@@ -111,7 +101,7 @@ async def run(url: str, database: str, limit: int, rows: int, tables_filter: Lis
 
 async def main() -> int:
     load_env_from_config()
-    parser = argparse.ArgumentParser(description="Extract schema and sample rows via MCP HTTP")
+    parser = argparse.ArgumentParser(description="Extract schema and sample rows via MCP HTTP (tool-only)")
     parser.add_argument("--url", default=os.getenv("MCP_URL", "http://localhost:8001/mcp/"), help="MCP server HTTP endpoint")
     parser.add_argument("--database", default=os.getenv("TD_NAME", ""), help="Database name to inspect")
     parser.add_argument("--limit", type=int, default=3, help="Max number of tables to inspect")
@@ -120,8 +110,8 @@ async def main() -> int:
     parser.add_argument("--timeout", type=float, default=120.0, help="Timeout seconds for each tool call")
     args = parser.parse_args()
 
-    if not args.database and not args.tables:
-        print("Provide --database or --tables to proceed.")
+    if not args.database:
+        print("Provide --database to proceed (tables alone are insufficient for tool calls).")
         return 2
 
     tables_filter = [t.strip() for t in args.tables.split(",") if t.strip()] if args.tables else None
