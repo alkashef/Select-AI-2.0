@@ -6,8 +6,8 @@ Behavior:
 - Connects to MCP HTTP server and lists available tools.
 
 Usage (Windows cmd):
-    python tests\test_mcp_list_tools.py --config tests\mcp_schema_sample.yml
-    python tests\test_mcp_list_tools.py --url http://localhost:8001/mcp/
+    python tests/test_mcp_list_tools.py --config tests/mcp_schema_sample.yml
+    python tests/test_mcp_list_tools.py --url http://localhost:8001/mcp/
 """
 
 from __future__ import annotations

@@ -1,0 +1,8 @@
+version: 1
+mcp_url: "http://localhost:8001/mcp/"
+question: "how many branches does the bank have?"
+# Optional knobs if the server supports them
+database: "BANK_DB"
+# limit_rows: 100
+# return_sql: true
+# timeout: 120
