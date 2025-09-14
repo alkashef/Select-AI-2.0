@@ -1,11 +1,12 @@
-"""HTTP MCP smoke test for Teradata MCP Server.
+"""HTTP MCP smoke test (tool-only) with YAML support.
 
 Behavior:
 - Loads env from `config/.env`.
-- Connects to a running MCP HTTP server at `MCP_URL`.
-- Lists available tools and exits.
+- Uses YAML config (optional) to resolve the MCP URL.
+- Connects to MCP HTTP server and lists available tools.
 
 Usage (Windows cmd):
+    python tests\test_mcp_list_tools.py --config tests\mcp_schema_sample.yml
     python tests\test_mcp_list_tools.py --url http://localhost:8001/mcp/
 """
 
@@ -19,7 +20,13 @@ from typing import Dict, Any
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
-from mcp_helpers import load_env_from_config
+try:
+    from tests.mcp_helpers import load_env_from_config, load_yaml_config, resolve_mcp_url
+except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tests.mcp_helpers import load_env_from_config, load_yaml_config, resolve_mcp_url
 
 
 def _load_env() -> None:
@@ -50,13 +57,17 @@ async def run(url: str, timeout: float) -> int:
 
 async def main() -> int:
     _load_env()
-    parser = argparse.ArgumentParser(description="List tools from HTTP MCP server")
-    parser.add_argument("--url", default=os.getenv("MCP_URL", "http://localhost:8001/mcp/"))
+    parser = argparse.ArgumentParser(description="List tools from HTTP MCP server (tool-only)")
+    parser.add_argument("--config", default="tests/mcp_schema_sample.yml")
+    parser.add_argument("--url", default=None)
     parser.add_argument("--timeout", type=float, default=60.0)
     args = parser.parse_args()
 
+    cfg = load_yaml_config(args.config)
+    url = resolve_mcp_url(args.url, cfg)
+
     try:
-        return await run(args.url, args.timeout)
+        return await run(url, args.timeout)
     except Exception as e:
         print(f"MCP HTTP client failed: {e!r}")
         return 1

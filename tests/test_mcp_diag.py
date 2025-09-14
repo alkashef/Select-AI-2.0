@@ -1,6 +1,7 @@
-"""MCP diagnostics over HTTP: list tools, prompts, and resources.
+"""MCP diagnostics over HTTP (tool-only): list tools, prompts, resources.
 
 Usage:
+    python tests\test_mcp_diag.py --config tests\mcp_schema_sample.yml
     python tests\test_mcp_diag.py --url http://localhost:8001/mcp/
 """
 
@@ -15,12 +16,12 @@ from typing import Dict, Any
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 try:
-    from tests.mcp_helpers import load_env_from_config
+    from tests.mcp_helpers import load_env_from_config, load_yaml_config, resolve_mcp_url
 except ImportError:
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from tests.mcp_helpers import load_env_from_config
+    from tests.mcp_helpers import load_env_from_config, load_yaml_config, resolve_mcp_url
 
 
 def _load_env() -> None:
@@ -83,12 +84,16 @@ async def run(url: str) -> int:
 
 async def main() -> int:
     _load_env()
-    parser = argparse.ArgumentParser(description="MCP diagnostics over HTTP")
-    parser.add_argument("--url", default=os.getenv("MCP_URL", "http://localhost:8001/mcp/"))
+    parser = argparse.ArgumentParser(description="MCP diagnostics over HTTP (tool-only)")
+    parser.add_argument("--config", default="tests/mcp_schema_sample.yml")
+    parser.add_argument("--url", default=None)
     args = parser.parse_args()
 
+    cfg = load_yaml_config(args.config)
+    url = resolve_mcp_url(args.url, cfg)
+
     try:
-        return await run(args.url)
+        return await run(url)
     except Exception as e:
         print(f"MCP HTTP diagnostics failed: {e!r}")
         return 1

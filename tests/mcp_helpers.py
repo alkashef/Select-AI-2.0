@@ -2,14 +2,22 @@
 
 - load_env_from_config: loads config/.env if present
 - print_mcp_result: pretty-prints common MCP tool outputs
+- load_yaml_config: reads a YAML config file safely
+- resolve_mcp_url: derive MCP URL from CLI arg, YAML, or env
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
+import os
+
+try:
+    import yaml  # type: ignore
+except Exception as e:  # pragma: no cover
+    yaml = None
 
 
 def load_env_from_config() -> None:
@@ -55,3 +63,27 @@ def print_mcp_result(result: Any) -> None:
             print(str(result))
     except Exception:
         print(str(result))
+
+
+def load_yaml_config(path: str) -> Dict[str, Any]:
+    """Load YAML file as a dict.
+
+    Returns empty dict if file missing or YAML library unavailable.
+    Raises ValueError if YAML root is not a mapping.
+    """
+    p = Path(path)
+    if not p.exists() or yaml is None:
+        return {}
+    data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise ValueError("YAML root must be a mapping")
+    return data
+
+
+def resolve_mcp_url(arg_url: Optional[str], cfg: Optional[Dict[str, Any]] = None, default: str = "http://localhost:8001/mcp/") -> str:
+    """Resolve MCP URL from CLI arg, YAML config, or environment.
+
+    Priority: arg_url > cfg['mcp_url'] > env MCP_URL > default.
+    """
+    cfg = cfg or {}
+    return arg_url or cfg.get("mcp_url") or os.getenv("MCP_URL", default)

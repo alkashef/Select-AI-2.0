@@ -34,6 +34,7 @@ You are GitHub Copilot, my AI coding assistant for rapid prototyping in Python.
 
 ## Documentation Awareness
 - Always check the official documentation for the exact version of the library listed in `requirements.txt`.
+- Always check the MCP documentation in the `docs\teradata-mcp-server` folder for the correct usage.
 - Do not use features or syntax from newer versions.
 - Avoid generic usage patterns that may not apply to the specific version.
 - Always update the README.md if new features or significant changes are introduced.

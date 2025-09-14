@@ -16,19 +16,29 @@ import argparse
 import asyncio
 import os
 from typing import Any, Dict, List, Optional
-import yaml
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
-from mcp_helpers import load_env_from_config, print_mcp_result
-import sys
+try:
+    from tests.mcp_helpers import (
+        load_env_from_config,
+        print_mcp_result,
+        load_yaml_config,
+        resolve_mcp_url,
+    )
+except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tests.mcp_helpers import (
+        load_env_from_config,
+        print_mcp_result,
+        load_yaml_config,
+        resolve_mcp_url,
+    )
 
 
 def load_config(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    if not isinstance(data, dict):
-        raise ValueError("YAML root must be a mapping")
-    return data
+    return load_yaml_config(path)
 
 
 async def run(url: str, database: str, limit_tables: int, rows_per_table: int, tables: Optional[List[str]], timeout: float) -> int:
@@ -111,7 +121,7 @@ async def main() -> int:
 
     cfg = load_config(args.config)
 
-    url = args.url or cfg.get("mcp_url") or os.getenv("MCP_URL", "http://localhost:8001/mcp/")
+    url = resolve_mcp_url(args.url, cfg)
     tables = None
     if args.tables:
         tables = [t.strip() for t in args.tables.split(",") if t.strip()]
