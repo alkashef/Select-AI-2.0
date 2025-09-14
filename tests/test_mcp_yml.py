@@ -35,7 +35,7 @@ except ImportError:
         load_yaml_config,
         resolve_mcp_url,
     )
-
+    
 
 def load_config(path: str) -> Dict[str, Any]:
     return load_yaml_config(path)
