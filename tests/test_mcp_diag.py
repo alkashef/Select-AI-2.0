@@ -1,20 +1,20 @@
-"""MCP diagnostics: list tools, prompts, and resources.
+"""MCP diagnostics over HTTP: list tools, prompts, and resources.
 
 Usage:
-  python tests\test_mcp_diag.py
+    python tests\test_mcp_diag.py --url http://localhost:8001/mcp/
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 from pathlib import Path
-from typing import Optional
-from urllib.parse import quote as url_quote
+from typing import Dict, Any
 
 from dotenv import load_dotenv
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
 
 
 def _load_env() -> None:
@@ -23,64 +23,70 @@ def _load_env() -> None:
         load_dotenv(env_path)
 
 
-def _get_db_uri() -> Optional[str]:
-    raw = os.getenv("DATABASE_URI")
-    if raw:
-        raw = raw.strip()
-        if (raw.startswith("'") and raw.endswith("'")) or (raw.startswith('"') and raw.endswith('"')):
-            raw = raw[1:-1]
-        return raw
-    user = os.getenv("TD_USER")
-    pwd = os.getenv("TD_PASSWORD")
-    host = os.getenv("TD_HOST")
-    db = os.getenv("TD_NAME")
-    port = os.getenv("TD_PORT", "1025")
-    if all([user, pwd, host, db]):
-        return f"teradata://{url_quote(user, safe='')}:{url_quote(pwd, safe='')}@{host}:{port}/{url_quote(db, safe='')}"
-    return None
+async def run(url: str) -> int:
+    client = MultiServerMCPClient({
+        "mcp_server": {
+            "url": url,
+            "transport": "streamable_http",
+        }
+    })
+
+    session_ctx = client.session("mcp_server")
+    async with session_ctx as session:
+        tools = await load_mcp_tools(session)
+        tools_by_name: Dict[str, Any] = {t.name: t for t in tools}
+
+        print("\n--- Tools ---")
+        if tools_by_name:
+            for name in tools_by_name:
+                print(f"- {name}")
+        else:
+            print("(none)")
+
+        # Prompts and resources are not standardized in HTTP adapter yet; attempt via raw session if exposed
+        try:
+            prompts = await session.list_prompts()
+            prompt_list = getattr(prompts, "prompts", []) or []
+        except Exception:
+            prompt_list = []
+
+        print("\n--- Prompts ---")
+        if prompt_list:
+            for p in prompt_list:
+                name = getattr(p, "name", "")
+                desc = getattr(p, "description", "")
+                print(f"- {name}: {desc}")
+        else:
+            print("(none)")
+
+        try:
+            resources = await session.list_resources()
+            resource_list = getattr(resources, "resources", []) or []
+        except Exception:
+            resource_list = []
+
+        print("\n--- Resources ---")
+        if resource_list:
+            for r in resource_list:
+                name = getattr(r, "name", "")
+                uri = getattr(r, "uri", "")
+                print(f"- {name}: {uri}")
+        else:
+            print("(none)")
+
+        return 0
 
 
 async def main() -> int:
     _load_env()
-    uri = _get_db_uri()
-    if not uri:
-        print("DATABASE_URI missing and TD_* incomplete. Configure config/.env.")
-        return 2
+    parser = argparse.ArgumentParser(description="MCP diagnostics over HTTP")
+    parser.add_argument("--url", default=os.getenv("MCP_URL", "http://localhost:8001/mcp/"))
+    args = parser.parse_args()
 
-    server = StdioServerParameters(command="teradata-mcp-server", args=[], env={"DATABASE_URI": uri})
-    print("Launching teradata-mcp-server via stdio...")
     try:
-        async with stdio_client(server) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-
-                tools = (await session.list_tools()).tools
-                print("\n--- Tools ---")
-                for t in tools:
-                    name = getattr(t, "name", "") or ""
-                    schema = getattr(t, "inputSchema", None)
-                    props = list((schema.get("properties") or {}).keys()) if isinstance(schema, dict) else []
-                    print(f"- {name}: args={props}")
-
-                prompts = (await session.list_prompts()).prompts
-                print("\n--- Prompts ---")
-                if prompts:
-                    for p in prompts:
-                        print(f"- {getattr(p, 'name', '')}: {getattr(p, 'description', '')}")
-                else:
-                    print("(none)")
-
-                resources = (await session.list_resources()).resources
-                print("\n--- Resources ---")
-                if resources:
-                    for r in resources:
-                        print(f"- {getattr(r, 'name', '')}: {getattr(r, 'uri', '')}")
-                else:
-                    print("(none)")
-
-                return 0
+        return await run(args.url)
     except Exception as e:
-        print(f"\nMCP diag failed: {e!r}")
+        print(f"MCP HTTP diagnostics failed: {e!r}")
         return 1
 
 

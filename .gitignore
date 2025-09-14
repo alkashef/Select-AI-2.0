@@ -111,7 +111,7 @@ Thumbs.db
 # Project logs
 log.txt
 
-.vscode/
+#.vscode/
 settings.json
 config/*.bak
 config/.env

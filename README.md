@@ -17,7 +17,7 @@ Key features:
 - Default AI backend: OpenAI Chat Completions via `openai>=1.30`.
 - Integration tests: gated by `RUN_REAL_OPENAI_TESTS=1` in `config/.env`.
 - Database: manual validation script under `tests/test_db.py` using `teradataml` and `config/.env` TD_* variables.
-- New: optional Teradata MCP Server support added; install docs below. App does not yet call MCP directly — we include a small client under `tests/`.
+- New: optional Teradata MCP Server support added. We use a separate terminal/server (HTTP) flow with small client scripts under `tests/`.
 
 ## Technology Stack
 
@@ -101,17 +101,17 @@ Batch/CLI modes are not provided in this minimal UI. Add separate scripts as nee
 
 ## Teradata MCP Server (Optional)
 
-Install the Teradata MCP server locally (no Docker) to enable tool-based access to Teradata via MCP. This installs a CLI `teradata-mcp-server` you can launch directly.
+We use a separate terminal/server (HTTP) flow. Start the MCP server in one terminal, then run client scripts from another.
 
-1) Install (into your active env):
+1) Install the server and adapters (into your active env):
 
 ```cmd
 pip install --upgrade pip
-pip install teradata-mcp-server
+pip install teradata-mcp-server langchain-mcp-adapters
 teradata-mcp-server --version
 ```
 
-2) Configure your database URI for the session:
+2) In a new terminal, set DB env and start the server in HTTP mode:
 
 ```cmd
 set TD_USER=your_user
@@ -120,54 +120,39 @@ set TD_HOST=your_host
 set TD_NAME=your_database
 set TD_PORT=1025
 set DATABASE_URI=teradata://%TD_USER%:%TD_PASSWORD%@%TD_HOST%:%TD_PORT%/%TD_NAME%
-echo %DATABASE_URI%
+teradata-mcp-server --mcp_transport streamable-http --mcp_port 8001 --profile all
 ```
 
-3) Quick smoke check of the CLI:
+You should see a line like: http://localhost:8001/mcp/
+
+3) In your project terminal, configure the client URL in `config/.env` (or set at runtime):
 
 ```cmd
-teradata-mcp-server --help
+set MCP_URL=http://localhost:8001/mcp/
 ```
 
-4) Start the server (foreground):
+4) Run the HTTP client smoke tests:
 
-```cmd
-teradata-mcp-server
-```
-
-Notes:
-- The server uses the `DATABASE_URI` env var to connect to Teradata.
-- Default transport is suitable for stdio-based clients; we’ll add a small Python MCP client under `scripts/` to exercise it.
-- To stop the server, press Ctrl+C.
-
-Troubleshooting:
-- If the command isn’t found, ensure your Conda env is active and `Scripts` is on PATH.
-- If connection fails, recheck `DATABASE_URI` and network access to the Teradata host.
-
-### MCP Client Smoke Test
-
-We include a tiny client `tests/test_mcp_list_tools.py` that launches the MCP server via stdio and lists tools.
-
-1) Ensure env is set (either `DATABASE_URI` or TD_* variables in `config/.env`).
-
-2) Run the client:
-
+List tools:
 ```cmd
 python tests\test_mcp_list_tools.py
 ```
 
-The script will:
-- Start `teradata-mcp-server` as a subprocess with your `DATABASE_URI` (or constructs one from TD_* if not set).
-- List available tools and exit.
+Diagnostics (tools/prompts/resources):
+```cmd
+python tests\test_mcp_diag.py
+```
 
-Advanced examples:
+Run a SQL via base_readQuery:
+```cmd
+python tests\test_mcp_read_query.py --sql "SELECT CURRENT_DATE"
+```
 
-- Run a SQL via MCP:
-   ```cmd
-   python tests\test_mcp_read_query.py --sql "SELECT CURRENT_DATE;" --timeout 20
-   ```
+Notes:
+- Server must run in a separate terminal with `DATABASE_URI` set there. The clients only need `MCP_URL`.
+- If your password contains '&', ensure you quote/escape when constructing `DATABASE_URI`.
+- For production, consider `LOGMECH`, `ENCRYPTDATA=ON`, and `CHARSET=UTF8` connection options.
 
-- Diagnostics (prompts/resources):
-   ```cmd
-   python tests\test_mcp_diag.py
-   ```
+Troubleshooting:
+- If the client times out, verify the server terminal shows requests and that `MCP_URL` matches.
+- Confirm DB host/port connectivity from the server machine.
