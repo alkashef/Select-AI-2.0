@@ -25,6 +25,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Never delete these directories or files
+PROTECTED_DIRS = {".git", ".github", ".vscode"}
+PROTECTED_FILES = {"settings.json"}
+
 def get_temp_patterns() -> List[str]:
     """Get list of file patterns to clean up."""
     return [
@@ -51,7 +55,7 @@ def get_temp_dirs() -> List[str]:
         ".env",
         ".venv",
         "node_modules",
-        ".vscode",
+        # Do not include .vscode; it's protected
     ]
 
 def load_gitignore_patterns(root_dir: Path) -> Tuple[List[str], List[str]]:
@@ -111,15 +115,25 @@ def find_cleanup_targets(root_dir: str, include_gitignore: bool = False) -> Tupl
             # Check for matching directories
             for dir_pattern in dir_patterns:
                 # Skip protected dirs
-                if dir_pattern in {".git", ".github"}:
+                if dir_pattern in PROTECTED_DIRS:
                     continue
                 matching_dirs = current_path.glob(dir_pattern)
-                dirs_to_delete.update(str(d) for d in matching_dirs if d.is_dir())
+                for d in matching_dirs:
+                    if not d.is_dir():
+                        continue
+                    if d.name in PROTECTED_DIRS:
+                        continue
+                    dirs_to_delete.add(str(d))
             
             # Check for matching files
             for pattern in file_patterns:
                 matching_files = current_path.glob(pattern)
-                files_to_delete.update(str(f) for f in matching_files if f.is_file())
+                for f in matching_files:
+                    if not f.is_file():
+                        continue
+                    if f.name in PROTECTED_FILES:
+                        continue
+                    files_to_delete.add(str(f))
                 
     except Exception as e:
         logger.error(f"Error while scanning directory: {e}")
@@ -178,11 +192,11 @@ def delete_paths(paths: Set[str], is_dir: bool = False) -> List[str]:
     return deleted
 
 def prune_empty_dirs(root_dir: str) -> List[str]:
-    """Remove empty directories under root, excluding .git and .github."""
+    """Remove empty directories under root, excluding protected dirs."""
     pruned: List[str] = []
     for current_dir, subdirs, files in os.walk(root_dir, topdown=False):
         name = os.path.basename(current_dir)
-        if name in {".git", ".github"}:
+        if name in PROTECTED_DIRS:
             continue
         try:
             if not os.listdir(current_dir):
