@@ -15,15 +15,13 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
+from tests.mcp_helpers import load_env_from_config, print_mcp_result
 
 
 def _load_env() -> None:
-    env_path = Path(__file__).resolve().parents[1] / "config" / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
+    load_env_from_config()
 
 
 async def run(url: str, sql: str, timeout: float) -> int:
@@ -50,26 +48,7 @@ async def run(url: str, sql: str, timeout: float) -> int:
             print("Timed out waiting for base_readQuery response.")
             return 1
 
-        # Normalize output
-        if isinstance(result, str):
-            try:
-                print(json.dumps(json.loads(result), indent=2))
-            except json.JSONDecodeError:
-                print(result)
-        elif isinstance(result, dict):
-            print(json.dumps(result, indent=2))
-        else:
-            try:
-                text = getattr(result[0], "text", None) if result else None
-                if text:
-                    try:
-                        print(json.dumps(json.loads(text), indent=2))
-                    except json.JSONDecodeError:
-                        print(text)
-                else:
-                    print(str(result))
-            except Exception:
-                print(str(result))
+        print_mcp_result(result)
 
         return 0
 

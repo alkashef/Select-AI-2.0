@@ -148,6 +148,14 @@ Run a SQL via base_readQuery:
 python tests\test_mcp_read_query.py --sql "SELECT CURRENT_DATE"
 ```
 
+### MCP Tests (Quick Reference)
+
+- `tests\test_mcp_list_tools.py`: Lists available tools from the running MCP server.
+- `tests\test_mcp_diag.py`: Shows tools, prompts, and resources (HTTP session).
+- `tests\test_mcp_read_query.py`: Executes `base_readQuery` against the server.
+
+All of the above use `MCP_URL` from `config/.env` (or `--url`).
+
 Notes:
 - Server must run in a separate terminal with `DATABASE_URI` set there. The clients only need `MCP_URL`.
 - If your password contains '&', ensure you quote/escape when constructing `DATABASE_URI`.

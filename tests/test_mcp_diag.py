@@ -12,15 +12,13 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 
-from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
+from tests.mcp_helpers import load_env_from_config
 
 
 def _load_env() -> None:
-    env_path = Path(__file__).resolve().parents[1] / "config" / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
+    load_env_from_config()
 
 
 async def run(url: str) -> int:
