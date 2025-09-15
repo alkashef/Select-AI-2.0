@@ -152,12 +152,7 @@ If your vector store DB/table names differ, edit `config\rag_config.yml` first, 
 
 4) Run the HTTP client smoke tests:
 
-List tools:
-```cmd
-python tests\test_mcp_list_tools.py
-```
-
-Diagnostics (tools/prompts/resources):
+Diagnostics (tools/prompts/resources) and tool list:
 ```cmd
 python tests\test_mcp_diag.py
 ```
@@ -172,9 +167,44 @@ Notes:
 - The NL test is SQL-ignorant; it only calls server tools and reads YAML.
 - If the server defaults to `demo_db`, update `rag_config.yml` or include the DB name in your NL question.
 
+### Option B — STDIO (no separate server)
+
+Launch the MCP server as a child process and pass DB env directly:
+
+```cmd
+python tests\test_mcp_stdio.py --config tests\mcp_stdio.yml
+```
+
+Notes:
+- Ensure `DATABASE_URI` is provided in `tests\mcp_stdio.yml` or `TD_*` env vars are set.
+- This mirrors the HTTP setup but avoids a dedicated server terminal.
+
+### Option C — HTTP from App (recommended)
+
+Spawn the MCP server from this project (using `uvx`), wait for readiness, then call tools over HTTP. This has proven most reliable on Windows.
+
+Prerequisites:
+- Install uv (once):
+   - PowerShell: `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
+- Ensure `DATABASE_URI` is set in `config/.env`.
+
+Use the standard HTTP tests with from-app spawn:
+
+- Diagnostics (prompts/resources; spawns by default, also lists tools):
+   ```cmd
+   python -m tests.test_mcp_diag --config tests\mcp_from_app.yml
+   ```
+- Schema + sample (spawns by default):
+   ```cmd
+   python -m tests.test_mcp_schema_sample --config tests\mcp_from_app.yml --database BANK_DB --limit 3 --rows 5
+   ```
+
+Notes:
+- No separate terminal is needed; tests start and stop the server.
+- Keep your `.env` authoritative for DB credentials and `DATABASE_URI`.
+
 ### MCP Tests (Quick Reference)
 
-- `tests\test_mcp_list_tools.py`: Lists available tools from the running MCP server.
 - `tests\test_mcp_diag.py`: Shows tools, prompts, and resources (HTTP session).
 - `tests\test_mcp_read_query.py`: Executes `base_readQuery` against the server.
 - `tests\test_mcp_schema_sample.py`: Lists tables in a database, prints column schema per table, and samples a few rows.

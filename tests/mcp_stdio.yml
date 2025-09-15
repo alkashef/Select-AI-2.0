@@ -1,0 +1,34 @@
+version: 1
+
+# STDIO server configuration: the client will spawn this process.
+server:
+  command: "uvx"
+  args:
+    - "teradata-mcp-server"
+    - "--profile"
+    - "all"
+  # Optional: working directory for the spawned process
+  cwd: null
+
+# Environment for the spawned server process (filled from OS env if null)
+env:
+  TD_USER: null
+  TD_PASSWORD: null
+  TD_HOST: null
+  TD_PORT: 1025
+  TD_NAME: null
+  # If DATABASE_URI is null, we build one from above fields.
+  DATABASE_URI: null
+  # Prefer env var for transport selection per server docs
+  MCP_TRANSPORT: stdio
+  # Optional secure connection flags
+  LOGMECH: null        # e.g., TDNEGO, LDAP
+  ENCRYPTDATA: null    # e.g., ON
+  CHARSET: null        # e.g., UTF8
+  LOG_LEVEL: DEBUG
+
+# Client behavior
+client:
+  timeout: 120
+  # Tool to call once connected (keep minimal for smoke test)
+  tool: "base_databaseList"

@@ -1,0 +1,25 @@
+version: 1
+
+server:
+  command: "uvx"
+  args:
+    - "teradata-mcp-server"
+    - "--mcp_transport"
+    - "streamable-http"
+    - "--mcp_port"
+    - "8001"
+    - "--profile"
+    - "all"
+  cwd: null
+
+env:
+  DATABASE_URI: null
+  ENCRYPTDATA: ON
+  CHARSET: UTF8
+
+client:
+  # URL to connect to after server is ready; if null, build from localhost:port
+  mcp_url: null
+  timeout: 120
+  # Tool to call once connected
+  tool: "base_databaseList"

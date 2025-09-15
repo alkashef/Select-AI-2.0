@@ -1,13 +1,2 @@
-version: 1
-# Optional override; otherwise the test will use MCP_URL or --url
-mcp_url: "http://localhost:8001/mcp/"
-
-# Either provide a database or an explicit list of tables
-database: "BANK_DB"
-# tables: ["Accounts", "Transactions"]
-
-# How many tables to scan (when using database)
-limit_tables: 10
-
-# How many rows to sample per table
-rows_per_table: 10
+# Deprecated: unused configuration file retained temporarily for reference.
+# The schema/sample test reads flags directly and spawns via tests/mcp_from_app.yml.

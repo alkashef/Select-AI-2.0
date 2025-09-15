@@ -1,7 +1,7 @@
 """HTTP MCP script (tool-only): extract schema and sample rows.
 
 Usage (Windows cmd):
-    python tests\test_mcp_schema_sample.py --database BANK_DB --limit 3 --rows 5
+    python -m tests.test_mcp_schema_sample --database BANK_DB --limit 3 --rows 5
 
 Requirements:
 - MCP server running separately (HTTP) and `MCP_URL` set or passed via --url.
@@ -17,13 +17,8 @@ from typing import Any, Dict, List, Optional
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
-try:
-    from tests.mcp_helpers import load_env_from_config, print_mcp_result
-except ImportError:
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from tests.mcp_helpers import load_env_from_config, print_mcp_result
+from tests.mcp_runner import spawn_http_server, stop_server
+from tests.mcp_helpers import load_env_from_config, print_mcp_result
 
 
 async def run(url: str, database: str, limit: int, rows: int, tables_filter: Optional[List[str]], timeout: float) -> int:
@@ -101,8 +96,9 @@ async def run(url: str, database: str, limit: int, rows: int, tables_filter: Opt
 
 async def main() -> int:
     load_env_from_config()
-    parser = argparse.ArgumentParser(description="Extract schema and sample rows via MCP HTTP (tool-only)")
-    parser.add_argument("--url", default=os.getenv("MCP_URL", "http://localhost:8001/mcp/"), help="MCP server HTTP endpoint")
+    parser = argparse.ArgumentParser(description="Extract schema and sample rows via MCP (spawns HTTP server unless --url provided)")
+    parser.add_argument("--config", default="tests/mcp_from_app.yml", help="From-app HTTP spawn config")
+    parser.add_argument("--url", default=None, help="If provided, skip spawn and use this MCP URL")
     parser.add_argument("--database", default=os.getenv("TD_NAME", ""), help="Database name to inspect")
     parser.add_argument("--limit", type=int, default=3, help="Max number of tables to inspect")
     parser.add_argument("--rows", type=int, default=5, help="Sample rows per table")
@@ -115,7 +111,17 @@ async def main() -> int:
         return 2
 
     tables_filter = [t.strip() for t in args.tables.split(",") if t.strip()] if args.tables else None
-    return await run(args.url, args.database, args.limit, args.rows, tables_filter, args.timeout)
+
+    proc = None
+    try:
+        if args.url:
+            url = args.url
+        else:
+            proc, url = spawn_http_server(args.config)
+        return await run(url, args.database, args.limit, args.rows, tables_filter, args.timeout)
+    finally:
+        if proc is not None:
+            stop_server(proc)
 
 
 if __name__ == "__main__":
