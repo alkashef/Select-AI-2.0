@@ -192,11 +192,11 @@ Use the standard HTTP tests with from-app spawn:
 
 - Diagnostics (prompts/resources; spawns by default, also lists tools):
    ```cmd
-   python -m tests.test_mcp_diag --config tests\mcp_from_app.yml
+   python -m tests.test_mcp_diag --config tests\mcp_http.yml
    ```
 - Schema + sample (spawns by default):
    ```cmd
-   python -m tests.test_mcp_schema_sample --config tests\mcp_from_app.yml --database BANK_DB --limit 3 --rows 5
+   python -m tests.test_mcp_schema_sample --config tests\mcp_http.yml --database BANK_DB --limit 3 --rows 5
    ```
 
 Notes:
@@ -206,7 +206,6 @@ Notes:
 ### MCP Tests (Quick Reference)
 
 - `tests\test_mcp_diag.py`: Shows tools, prompts, and resources (HTTP session).
-- `tests\test_mcp_read_query.py`: Executes `base_readQuery` against the server.
 - `tests\test_mcp_schema_sample.py`: Lists tables in a database, prints column schema per table, and samples a few rows.
 
 All of the above use `MCP_URL` from `config/.env` (or `--url`).

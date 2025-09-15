@@ -79,7 +79,7 @@ async def run(url: str) -> int:
 async def main() -> int:
     _load_env()
     parser = argparse.ArgumentParser(description="MCP diagnostics over HTTP (tool-only)")
-    parser.add_argument("--config", default="tests/mcp_from_app.yml", help="From-app HTTP spawn config")
+    parser.add_argument("--config", default="tests/mcp_http.yml", help="From-app HTTP spawn config")
     parser.add_argument("--url", default=None, help="If provided, skip spawn and use this MCP URL")
     args = parser.parse_args()
     proc = None

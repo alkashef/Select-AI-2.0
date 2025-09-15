@@ -97,7 +97,7 @@ async def run(url: str, database: str, limit: int, rows: int, tables_filter: Opt
 async def main() -> int:
     load_env_from_config()
     parser = argparse.ArgumentParser(description="Extract schema and sample rows via MCP (spawns HTTP server unless --url provided)")
-    parser.add_argument("--config", default="tests/mcp_from_app.yml", help="From-app HTTP spawn config")
+    parser.add_argument("--config", default="tests/mcp_http.yml", help="From-app HTTP spawn config")
     parser.add_argument("--url", default=None, help="If provided, skip spawn and use this MCP URL")
     parser.add_argument("--database", default=os.getenv("TD_NAME", ""), help="Database name to inspect")
     parser.add_argument("--limit", type=int, default=3, help="Max number of tables to inspect")
