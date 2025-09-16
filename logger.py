@@ -41,6 +41,11 @@ class ChatLogger:
         """
         # Resolve path: explicit argument wins; otherwise use configured path
         self._path = Path(file_path) if file_path is not None else self._CFG.log_file
+        # Ensure directory exists for the log file
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
 
     def log(self, role: str, content: str) -> None:
         """Append a single chat message to the log.

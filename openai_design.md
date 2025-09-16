@@ -1,6 +1,6 @@
 # OpenAI + MCP Integration Design
 
-Goal: Add a new backend `ai/openai.py` that implements `AI.generate_reply` and orchestrates between the user and the Teradata MCP server (via streamable HTTP). The user chats with the UI; the backend decides when/how to call MCP tools (read-only) to answer database questions.
+Goal: Add a new backend `ai/openai.py` that implements `AI.generate_reply` and orchestrates between the user and the Teradata MCP server (via streamable HTTP). The user chats with the UI; the backend decides when/how to call MCP tools (read-only) to answer database questions. This is a demo/PoC (dev-only), so we favor visibility for debugging over strict caps.
 
 ## Architecture Overview
 
@@ -57,6 +57,10 @@ Goal: Add a new backend `ai/openai.py` that implements `AI.generate_reply` and o
 - `base_columnDescription(database_name, obj_name)`
 - `base_tablePreview(database_name, table_name)` (optional)
 - `base_readQuery(sql)`
+- Data quality (if exposed by the server):
+  - `qlty_univariateStatistics(database_name, table_name, column_name)`
+  - `qlty_missingValues(database_name, table_name)`
+  - `qlty_distinctCategories(database_name, table_name, column_name)`
 - Client: `langchain_mcp_adapters` with `MultiServerMCPClient` and `load_mcp_tools`.
 
 ## Session Strategy
@@ -83,7 +87,7 @@ Goal: Add a new backend `ai/openai.py` that implements `AI.generate_reply` and o
 - Events: `ai_openai.init`, `ai_openai.call`, `ai_openai.tool.call`, `ai_openai.tool.error`.
 - Add log lines with prefixes:
   - `[LLM=>MCP]` tool name and payload (sanitize; include SQL if present).
-  - `[MCP=>LLM]` response payload (truncate large outputs; no secrets).
+  - `[MCP=>LLM]` response payload (for debugging, avoid truncation unless outputs are extremely large; never log secrets).
 - Never log credentials; mask passwords in URIs; cap payload size.
 
 ## Security & Secrets

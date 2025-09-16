@@ -131,24 +131,7 @@ You should see a line like: http://localhost:8001/mcp/
 set MCP_URL=http://localhost:8001/mcp/
 ```
 
-3a) (Optional) Configure RAG workflow file in the server package:
-
-By default, the server looks for `rag_config.yml` inside the installed package under `.../teradata_mcp_server/config/rag_config.yml`.
-
-We provide a project template in `config/rag_config.yml`. You can install it into the package with:
-
-```cmd
-python scripts\rag_config.py --install-from config\rag_config.yml
-```
-
-Inspect where it lives and its contents:
-
-```cmd
-python scripts\rag_config.py --show-path
-python scripts\rag_config.py --show-config
-```
-
-If your vector store DB/table names differ, edit `config\rag_config.yml` first, then reinstall.
+ 
 
 4) Run the HTTP client smoke tests:
 

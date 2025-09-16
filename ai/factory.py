@@ -7,8 +7,8 @@ Responsibility:
 
 from .base import AI
 from .gpt import AI_GPT
+from .openai import AI_OpenAI
 from config import get_ai_backend
-from logger import ChatLogger
 
 
 def get_ai() -> AI:
@@ -16,6 +16,7 @@ def get_ai() -> AI:
 
     Currently supported values:
     - "gpt": :class:`ai.gpt.AI_GPT`
+    - "openai": :class:`ai.openai.AI_OpenAI`
 
     Returns
     -------
@@ -24,9 +25,13 @@ def get_ai() -> AI:
     """
     backend = get_ai_backend()
     try:
+        # Late import to avoid import-time .env side effects in tests
+        from logger import ChatLogger  # type: ignore
         ChatLogger().event("ai.backend.select", backend=backend)
     except Exception:
         pass
     if backend == "gpt":
         return AI_GPT()
+    if backend == "openai":
+        return AI_OpenAI()
     raise ValueError(f"Unknown AI backend: {backend}")
