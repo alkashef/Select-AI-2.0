@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from typing import Any, Dict, Optional, Tuple
 
 from config import get_openai_config
@@ -46,6 +47,37 @@ def _json_dumps(obj: Any) -> str:
         return str(obj)
 
 
+def _strip_code_fences(text: str) -> str:
+    """Remove common Markdown code fences around JSON blocks.
+
+    Handles patterns like ```json ... ``` or ``` ... ``` and trims whitespace.
+    """
+    if not text:
+        return text
+    t = text.strip()
+    # ```json ... ``` or ``` … ```
+    if t.startswith("```") and t.endswith("```"):
+        t = t[3:-3].strip()
+        # Optional language tag (e.g., json)
+        t = re.sub(r"^json\s+", "", t, flags=re.IGNORECASE)
+    return t.strip()
+
+
+def _split_qualified(name: str, default_db: str = "") -> Tuple[str, str]:
+    """Split a possibly qualified identifier into (database, table).
+
+    - Accepts forms like "DB.TABLE", "DB.TABLE.MORE" (use first two), or just "TABLE".
+    - Strips quotes and whitespace. Falls back to default_db if database is missing.
+    """
+    if not name:
+        return (default_db.strip(), "")
+    n = name.strip().strip('"').strip("'")
+    parts = [p for p in re.split(r"\.", n) if p]
+    if len(parts) >= 2:
+        return (parts[0].strip(), parts[1].strip())
+    return (default_db.strip(), parts[0].strip())
+
+
 class AI_OpenAI(AI):
     """OpenAI-backed chat that can call MCP tools over HTTP."""
 
@@ -57,7 +89,7 @@ class AI_OpenAI(AI):
         self.client = cfg["client"]
 
         # MCP configuration
-        self.mcp_url = os.getenv("MCP_URL", "").strip()
+        self.mcp_url = self._normalize_mcp_url(os.getenv("MCP_URL", "").strip())
         try:
             self.mcp_timeout = float(os.getenv("MCP_TIMEOUT", "120").strip())
         except ValueError:
@@ -70,6 +102,18 @@ class AI_OpenAI(AI):
             )
         except Exception:
             pass
+
+    @staticmethod
+    def _normalize_mcp_url(url: str) -> str:
+        if not url:
+            return url
+        u = url.strip()
+        if not u.endswith("/"):
+            u += "/"
+        # Ensure path ends with /mcp/
+        if not u.rstrip("/").endswith("/mcp"):
+            u = u + "mcp/"
+        return u
 
     # ----------------------------- LLM Planning ----------------------------- #
     def _plan_action(self, messages: list[Message]) -> Dict[str, Any]:
@@ -85,10 +129,11 @@ class AI_OpenAI(AI):
 
         sys_prompt = (
             "You are a database assistant with tool access via MCP. "
-            "Choose one action: list_tables, describe_table, preview_table, read_query, "
+            "Choose exactly ONE action: list_tables, describe_table, preview_table, read_query, "
             "dq_univariate, dq_missing, dq_distinct, or answer. "
-            "Return STRICT JSON with fields: action, args (object), and reason. "
-            "Rules: read-only; prefer using tools for schema/data; include SQL only when action is read_query. "
+            "Return STRICT JSON ONLY (no code fences) with fields: action, args (object), reason. "
+            "Rules: read-only; prefer terminal actions. For counts/aggregates like 'how many' or 'number of', "
+            "choose read_query and provide a complete SQL statement (e.g., SELECT COUNT(*) FROM DB.TABLE). "
             "If no DB specified, you may use the default database."
         )
 
@@ -99,12 +144,20 @@ class AI_OpenAI(AI):
         ]
 
         # Use JSON mode when supported; fall back otherwise
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=chat_messages,
-            temperature=0,
-        )
-        content = (resp.choices[0].message.content or "").strip()
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=chat_messages,
+                temperature=0,
+                response_format={"type": "json_object"},
+            )
+        except Exception:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=chat_messages,
+                temperature=0,
+            )
+        content = _strip_code_fences((resp.choices[0].message.content or "").strip())
         try:
             plan = json.loads(content)
             if not isinstance(plan, dict):
@@ -122,10 +175,13 @@ class AI_OpenAI(AI):
         client = MultiServerMCPClient({
             "mcp": {"url": self.mcp_url, "transport": "streamable_http"}
         })
-        async with client.session("mcp") as session:
-            tools = await load_mcp_tools(session)
-            tools_by = {t.name: t for t in tools}
-            return await coro_func(tools_by)
+        try:
+            async with client.session("mcp") as session:
+                tools = await load_mcp_tools(session)
+                tools_by = {t.name: t for t in tools}
+                return await coro_func(tools_by)
+        except Exception as e:
+            raise RuntimeError(f"Failed to connect/load MCP tools at {self.mcp_url}: {e}")
 
     async def _call_tool(self, tool_name: str, payload: Dict[str, Any]) -> Tuple[str, Any]:
         """Call a named MCP tool with payload, returning (name, result)."""
@@ -138,7 +194,10 @@ class AI_OpenAI(AI):
                 ChatLogger().log("[LLM=>MCP]", f"{tool_name} { _json_dumps(payload) }")
             except Exception:
                 pass
-            res = await asyncio.wait_for(tool.ainvoke(payload), timeout=self.mcp_timeout)
+            try:
+                res = await asyncio.wait_for(tool.ainvoke(payload), timeout=self.mcp_timeout)
+            except Exception as e:
+                raise RuntimeError(f"Tool '{tool_name}' invocation failed: {e}")
             # Log incoming response (head+tail truncation for debug visibility)
             try:
                 text = _json_dumps(res)
@@ -179,8 +238,10 @@ class AI_OpenAI(AI):
                 return self._summarize_result(messages, tool=name, payload=payload, result=res)
 
             if action == "describe_table":
+                # Accept qualified table (e.g., DB.TABLE) or separate fields
+                raw_tbl = str(args.get("table") or args.get("obj_name") or "").strip()
                 db = str(args.get("database") or self.default_db or "").strip()
-                tbl = str(args.get("table") or args.get("obj_name") or "").strip()
+                db, tbl = _split_qualified(raw_tbl, db)
                 if not (db and tbl):
                     return "Please provide both database and table name."
                 tool, payload = "base_columnDescription", {"database_name": db, "obj_name": tbl}
@@ -188,8 +249,9 @@ class AI_OpenAI(AI):
                 return self._summarize_result(messages, tool=name, payload=payload, result=res)
 
             if action == "preview_table":
+                raw_tbl = str(args.get("table") or args.get("table_name") or "").strip()
                 db = str(args.get("database") or self.default_db or "").strip()
-                tbl = str(args.get("table") or args.get("table_name") or "").strip()
+                db, tbl = _split_qualified(raw_tbl, db)
                 if not (db and tbl):
                     return "Please provide both database and table name."
                 tool, payload = "base_tablePreview", {"database_name": db, "table_name": tbl}
