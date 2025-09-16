@@ -116,6 +116,11 @@ class AI_OpenAI(AI):
         return u
 
     # ----------------------------- LLM Planning ----------------------------- #
+    def _last_user_text(self, messages: list[Message]) -> str:
+        """Return the content of the last user message or empty string."""
+        last_user = next((m for m in reversed(messages) if m.get("role") == "user" and m.get("content")), None)
+        return last_user.get("content", "") if last_user else ""
+
     def _plan_action(self, messages: list[Message]) -> Dict[str, Any]:
         """Ask the LLM to plan the next action.
 
@@ -124,8 +129,7 @@ class AI_OpenAI(AI):
          "args": {...}, "reason": "..."}
         """
         # Keep prompt small; last user message is most important
-        last_user = next((m for m in reversed(messages) if m.get("role") == "user" and m.get("content")), None)
-        user_text = last_user.get("content", "") if last_user else ""
+        user_text = self._last_user_text(messages)
 
         sys_prompt = (
             "You are a database assistant with tool access via MCP. "
@@ -209,6 +213,40 @@ class AI_OpenAI(AI):
         result = await self._with_mcp(_runner)
         return tool_name, result
 
+    # ------------------------ SQL Synthesis Fallback ------------------------ #
+    def _generate_sql(self, prompt_text: str) -> str:
+        """Ask the LLM to produce a single valid Teradata SQL statement.
+
+        Returns empty string if generation fails. Avoids code fences and explanations.
+        """
+        sys = (
+            "You translate natural language to a single valid Teradata SQL statement. "
+            "Output SQL only, no comments, no markdown, no backticks. "
+            "Use COUNT(*) for 'how many' questions. If a default database is provided, "
+            "qualify tables as default_db.table. Do not add LIMIT unless asked."
+        )
+        default_db_note = f"Assume default_db is {self.default_db}." if self.default_db else ""
+        msgs = [
+            {"role": "system", "content": sys},
+            {"role": "user", "content": f"{default_db_note}\nQuestion: {prompt_text}"},
+        ]
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=msgs,
+                temperature=0,
+            )
+            text = (resp.choices[0].message.content or "").strip()
+            text = _strip_code_fences(text)
+            # Remove trailing semicolon/newlines
+            text = text.strip().rstrip(";").strip()
+            # Heuristic sanity: should start with SELECT
+            if not text.upper().startswith("SELECT"):
+                return ""
+            return text
+        except Exception:
+            return ""
+
     # ---------------------------- Public API -------------------------------- #
     def generate_reply(self, messages: list[Message], context: dict | None = None) -> str:
         if not messages:
@@ -261,7 +299,15 @@ class AI_OpenAI(AI):
             if action == "read_query":
                 sql = str(args.get("sql") or "").strip()
                 if not sql:
-                    return "Please provide a SQL statement to run."
+                    # Fallback: synthesize Teradata SQL from the user's question
+                    user_text = self._last_user_text(messages)
+                    sql = self._generate_sql(user_text)
+                    if not sql:
+                        return "Please provide a SQL statement to run."
+                    try:
+                        ChatLogger().event("ai_openai.fallback.sql_generated", sql=sql[:500])
+                    except Exception:
+                        pass
                 tool, payload = "base_readQuery", {"sql": sql}
                 name, res = asyncio.run(self._call_tool(tool, payload))
                 return self._summarize_result(messages, tool=name, payload=payload, result=res)
