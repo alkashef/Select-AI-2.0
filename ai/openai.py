@@ -95,6 +95,13 @@ class AI_OpenAI(AI):
         except ValueError:
             self.mcp_timeout = 120.0
         self.default_db = os.getenv("TD_NAME", "").strip()
+        # Phase 1: lightweight metadata cache for default DB
+        self._metadata_loaded = False
+        self.metadata: Dict[str, Any] = {
+            "database": self.default_db,
+            "tables": [],
+            "columns": {},  # table -> list of column dicts
+        }
 
         try:
             ChatLogger().event(
@@ -125,20 +132,24 @@ class AI_OpenAI(AI):
         """Ask the LLM to plan the next action.
 
         Returns a dict like:
-        {"action":"answer|list_tables|describe_table|preview_table|read_query",
+        {"action":"answer|list_tables|describe_table|preview_table|dq_univariate|dq_missing|dq_distinct",
          "args": {...}, "reason": "..."}
         """
         # Keep prompt small; last user message is most important
         user_text = self._last_user_text(messages)
 
+        default_db_note = self.default_db or "the configured database"
+        boundary_msg = (
+            f"Hi! I am a data analyst specialized in analyzing the data in your {default_db_note} database."
+        )
         sys_prompt = (
-            "You are a database assistant with tool access via MCP. "
-            "Choose exactly ONE action: list_tables, describe_table, preview_table, read_query, "
-            "dq_univariate, dq_missing, dq_distinct, or answer. "
+            "You are a data analyst for a Teradata environment with MCP tools. "
+            "Phase 1 capabilities: schema/discovery and data quality only. Do NOT plan BI or SQL execution. "
+            "Choose exactly ONE action: list_tables, describe_table, preview_table, dq_univariate, dq_missing, dq_distinct, or answer. "
+            "If the user's request is not about analyzing the data in the database, respond with action=answer and args.text set to the boundary message provided. "
+            "Boundary message: '" + boundary_msg + "'. "
             "Return STRICT JSON ONLY (no code fences) with fields: action, args (object), reason. "
-            "Rules: read-only; prefer terminal actions. For counts/aggregates like 'how many' or 'number of', "
-            "choose read_query and provide a complete SQL statement (e.g., SELECT COUNT(*) FROM DB.TABLE). "
-            "If no DB specified, you may use the default database."
+            "Rules: read-only; prefer terminal actions; use the default database when not provided."
         )
 
         # Minimal history: one system + latest user
@@ -257,6 +268,8 @@ class AI_OpenAI(AI):
         except Exception:
             pass
 
+        # Ensure metadata cache (tables) is populated for default DB
+        self._ensure_metadata()
         plan = self._plan_action(messages)
         action = str(plan.get("action", "answer")).strip()
         args = plan.get("args") or {}
@@ -297,20 +310,8 @@ class AI_OpenAI(AI):
                 return self._summarize_result(messages, tool=name, payload=payload, result=res)
 
             if action == "read_query":
-                sql = str(args.get("sql") or "").strip()
-                if not sql:
-                    # Fallback: synthesize Teradata SQL from the user's question
-                    user_text = self._last_user_text(messages)
-                    sql = self._generate_sql(user_text)
-                    if not sql:
-                        return "Please provide a SQL statement to run."
-                    try:
-                        ChatLogger().event("ai_openai.fallback.sql_generated", sql=sql[:500])
-                    except Exception:
-                        pass
-                tool, payload = "base_readQuery", {"sql": sql}
-                name, res = asyncio.run(self._call_tool(tool, payload))
-                return self._summarize_result(messages, tool=name, payload=payload, result=res)
+                # Phase 1 defers SQL execution
+                return "SQL-based querying is coming soon (Phase 2). For now, I can help with schema and data quality checks."
 
             if action == "dq_univariate":
                 db = str(args.get("database") or self.default_db or "").strip()
@@ -388,3 +389,34 @@ class AI_OpenAI(AI):
             return (resp.choices[0].message.content or "").strip()
         except Exception as e:
             return f"Completed tool {tool}; failed to summarize: {e}. Here is raw result:\n{_truncate_head_tail(_json_dumps(result))}"
+
+    # ------------------------- Metadata management ------------------------- #
+    def _ensure_metadata(self) -> None:
+        if self._metadata_loaded or not self.mcp_url or not self.default_db:
+            return
+        try:
+            # Fetch table list for default DB
+            _, res = asyncio.run(self._call_tool("base_tableList", {"database_name": self.default_db}))
+            tables = self._extract_table_names(res)
+            if tables:
+                self.metadata["tables"] = tables
+            self._metadata_loaded = True
+        except Exception:
+            # Non-fatal: continue without metadata
+            self._metadata_loaded = True
+
+    @staticmethod
+    def _extract_table_names(tables_res: Any) -> list[str]:
+        try:
+            payload = tables_res
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            rows = (payload or {}).get("results", [])
+            names: list[str] = []
+            for row in rows:
+                name = row.get("TableName") or row.get("tablename") or row.get("name")
+                if name:
+                    names.append(str(name))
+            return names
+        except Exception:
+            return []
