@@ -14,51 +14,40 @@ Goal: Add a new backend `ai/openai.py` that implements `AI.generate_reply` and o
 - Security: AuthN/AuthZ enforced at DB level; request context adds query banding; HTTP mode supports per-user auth patterns; profiles limit tool exposure.
 - Not in scope for MVP: write operations (DML/DDL), multi-step server-side workflows, long-running jobs. We’ll keep client orchestration simple.
 
-## Agent/Roles Architecture
+## Agent/Roles Architecture (Phase 1)
 
-We’ll model four roles, implemented initially as lightweight functions/classes inside `ai/openai.py` and orchestrated by a router. We defer multi-agent frameworks until needed.
+For Phase 1, we intentionally narrow the scope to one expert: Data Quality. The SQL Expert and BI Expert are deferred to later phases. We still keep a lightweight Data Analyst as the user-facing orchestrator.
 
 1) Data Analyst (primary interface)
-- Responsibilities: greet the user, set expectations, maintain conversation, route intents, and stitch results into friendly answers.
+- Responsibilities: greet the user, set expectations, maintain conversation, route intents (schema/discovery, data_quality, smalltalk), and stitch results into friendly answers.
 - Startup behavior: on app start, fetch and cache metadata for `TD_NAME` (tables and columns) via `base_tableList` + `base_columnDescription` per table. Cache in memory (and optionally a small JSON on disk) for quick reuse.
 - Off-domain conversations: respond with a gentle boundary message, e.g., “I’m a data analyst specialized in analyzing the data in your XYZ database.”
-- Routing: classify user intent into one of [schema/discovery, KPI/BI, data_quality, raw_sql_request, smalltalk]. Hand off to the corresponding role.
+- Routing: classify user intent into [schema/discovery, data_quality, smalltalk]. SQL/BI requests should be acknowledged and deferred as “coming soon”.
 
-2) SQL Expert
-- Input: user NL request + known metadata context (database, tables, columns, constraints).
-- Output: safe, read-only Teradata SQL that adheres to TD semantics (qualify objects as `DB.TABLE`, prefer `TOP n` or add predicates/limits when reasonable, no DDL/DML).
-- Execution: the Data Analyst (or BI/DQ roles) calls `base_readQuery(sql)`. The SQL Expert never runs tools directly; it just returns SQL plus short rationale.
-
-3) BI Expert
-- Purpose: compute KPIs, aggregations, and propose simple visualizations/dashboards.
-- Flow: define a minimal “BI task spec” (metrics, dimensions, filters, grain, timeframe). Ask clarifying questions if needed. Call SQL Expert to generate aggregate SQL, then run via `base_readQuery`. Return KPI values and a small “viz spec” (e.g., bar/line/pie suggestions) for UI rendering.
-
-4) Data Quality Expert
+2) Data Quality Expert (Phase 1 focus)
 - Purpose: describe data quality via descriptive stats, missing values, and categorical distributions.
-- Tools: call `qlty_univariateStatistics`, `qlty_missingValues`, `qlty_distinctCategories`, and optionally `base_tablePreview`.
+- Tools: call `qlty_univariateStatistics`, `qlty_missingValues`, `qlty_distinctCategories`, and optionally `base_tablePreview` for small samples.
 - Output: a short summary (central tendency, dispersion, missingness, category counts) and actionable next steps.
 
 Intent Router
-- Implementation: single LLM classification call (labels: schema, kpi_bi, data_quality, sql_request, smalltalk) with a tiny heuristic fallback (keywords: “missing”, “kpi”, “chart”, “explain”, etc.).
+- Implementation: single LLM classification call (labels: schema, data_quality, smalltalk) with a tiny heuristic fallback (e.g., keywords: “missing”, “nulls”, “distinct”, “stats”, “schema”, “columns”, “tables”).
 - Memory: include cached metadata summary in the router context to improve accuracy.
 
-Execution Diagram
+Execution Diagram (Phase 1)
 ```
 User → Data Analyst → (Router)
   ├─ schema → MCP base_tableList/columnDescription/preview → Answer
-  ├─ kpi_bi → BI Expert → SQL Expert → MCP readQuery → KPI+viz → Answer
-  ├─ data_quality → DQ Expert → MCP qlty_* → Summary → Answer
-  ├─ sql_request → SQL Expert → MCP readQuery → SQL+Result → Answer
+  ├─ data_quality → DQ Expert → MCP qlty_* (+optional preview) → Summary → Answer
   └─ smalltalk → Boundary message → Answer
 ```
 
-## Implementation Plan (MVP)
+## Implementation Plan (Phase 1 MVP)
 
 - Form factor: start with plain Python functions and small classes inside `ai/openai.py` (or a sibling `agents/` module later) to keep iteration fast.
-- Metadata cache: a simple dict `{ database: { tables: [...], columns: {table:[...] } } }` populated at startup. Reuse for SQL generation and BI/DQ prompts.
+- Metadata cache: a simple dict `{ database: { tables: [...], columns: {table:[...] } } }` populated at startup. Reuse for DQ prompts and schema answers.
 - Tool calls: via `langchain_mcp_adapters` HTTP client to `MCP_URL`. Reuse a single session, 60–120s timeout per call.
-- Prompting: role-specific system prompts with explicit read-only policy, Teradata SQL guidance, and output schema guidelines.
-- Responses: concise user-facing answers; include SQL when we executed it; avoid large JSON dumps.
+- Prompting: role-specific system prompts with explicit read-only policy and DQ output schema guidelines.
+- Responses: concise user-facing answers; include small samples when helpful (via `base_tablePreview`), avoid large JSON dumps.
 
 ## What LangChain Adds (and When)
 
@@ -68,14 +57,14 @@ User → Data Analyst → (Router)
   - Built-in retry, tracing, and callbacks.
 - Cons:
   - Additional framework complexity; our current MCP usage is already through `langchain-mcp-adapters` for the client side.
-- MVP choice: keep role logic as functions; optionally wrap into a simple LangChain agent later (particularly for BI Expert where tool+LLM iteration is useful).
+- MVP choice: keep role logic as functions; optionally wrap into a simple LangChain agent later (particularly once SQL/BI flows are introduced).
 
 ## Can CrewAI Help?
 
 - Strengths: multi-agent orchestration, role definitions, task delegation, shared memory, and planning.
 - Use cases here: coordinating SQL Expert and BI/DQ experts with clear handoffs and artifacts (SQL, KPI spec, viz spec).
 - Tradeoffs: new dependency and learning curve; can overcomplicate MVP.
-- Recommendation: Phase 2. Once single-process routing stabilizes, we can model the three specialists as CrewAI agents with explicit tasks and shared context.
+- Recommendation: Future phase. Once single-process routing stabilizes and SQL/BI are added, we can model specialists as CrewAI agents with explicit tasks and shared context.
 
 ## Configuration
 
@@ -95,10 +84,8 @@ User → Data Analyst → (Router)
 
 ## Prompting Strategy (Role-Specific)
 
-- Data Analyst: greet, set expectations, route, keep answers concise; inject the boundary message when off-topic.
-- SQL Expert: output Teradata SQL only (no prose), optionally brief rationale; qualify objects; prefer `TOP n` for sampling; never DDL/DML.
-- BI Expert: produce a compact KPI table and a tiny viz spec (type, x, y, split, notes).
-- Data Quality: summarize stats with 2–4 bullet takeaways and next-step suggestions.
+- Data Analyst: greet, set expectations, route, keep answers concise; inject the boundary message when off-topic. For SQL/BI requests, acknowledge and state they’re coming soon.
+- Data Quality: summarize stats with 2–4 bullet takeaways and next-step suggestions; request missing parameters (db/table/column) if not provided.
 
 ## Error Handling
 
@@ -117,13 +104,12 @@ User → Data Analyst → (Router)
 ## MVP Roadmap
 
 Phase 1 (this sprint)
-- Implement Data Analyst + SQL Expert + Metadata cache.
-- Expose router + SQL execution via `base_readQuery`.
-- Basic BI (single-metric aggregate) as stretch.
+- Implement Data Analyst + Data Quality Expert + metadata cache.
+- Enable router to handle schema/discovery and data quality flows.
+- Use `qlty_*` tools (+optional `base_tablePreview`), no SQL/BI yet.
 
 Phase 2
-- Add Data Quality Expert using qlty_* tools.
-- Expand BI Expert (multiple metrics, grouping, simple viz rendering hooks).
+- Add SQL Expert and BI Expert; introduce `base_readQuery` aggregates and KPI flows.
 
 Phase 3
 - Consider CrewAI for explicit multi-agent orchestration.
