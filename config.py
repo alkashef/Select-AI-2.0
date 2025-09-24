@@ -32,7 +32,7 @@ class Config:
         load_dotenv(dotenv_path=env_path, override=False)
 
         log_enabled = cls._env_bool("LOG_ENABLED", "false")
-        log_file = Path(os.getenv("LOG_FILE", "log.txt").strip())
+        log_file = Path(os.getenv("LOG_FILE", "logs/log.txt").strip())
         return cls(env_path=env_path, log_enabled=log_enabled, log_file=log_file)
 
 

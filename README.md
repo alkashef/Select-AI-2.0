@@ -10,7 +10,7 @@ Key features:
 - Natural language to SQL translation (model-dependent)
 - Streamlit chat interface with lightweight styling
 - Pluggable AI backend via `ai/base.py` + `ai/factory.py`
-- Optional logging to `log.txt` controlled by `config/.env`
+- Optional logging to `logs/log.txt` controlled by `config/.env`
 
 ## Project Status
 
@@ -34,7 +34,7 @@ Key features:
 - AI Factory: `ai/factory.py` – selects and constructs the backend
 - OpenAI Backend: `ai/gpt.py` – `AI_GPT` implementation
 - Configuration: `config.py`, `config/.env`, `config/.env.example`
-- Logging: `logger.py` (writes to `log.txt` when enabled)
+- Logging: `logger.py` (writes to `logs/log.txt` by default when enabled)
 
 ## Setup for Development
 
@@ -149,6 +149,17 @@ Notes:
 - The RAG tool reads database/table/model settings from the installed `rag_config.yml`.
 - The NL test is SQL-ignorant; it only calls server tools and reads YAML.
 - If the server defaults to `demo_db`, update `rag_config.yml` or include the DB name in your NL question.
+
+## Logs and Tool Snapshots
+
+- Logs:
+   - Default path is `logs/log.txt`. Configure via `LOG_FILE` in `config/.env`.
+   - Enable/disable with `LOG_ENABLED=true|false`.
+
+- MCP Tool Snapshots:
+   - On startup, the app snapshots available MCP tools to `config/tools_snapshot.json` and `config/tools_snapshot.yml`.
+   - Purpose: JSON is easy to parse and feed into programmatic flows; YAML is human-friendly for quick inspection and prompts.
+   - You can override paths via `TOOLS_SNAPSHOT_JSON` and `TOOLS_SNAPSHOT_YAML` in `config/.env`.
 
 ### Option B — STDIO (no separate server)
 

@@ -1,0 +1,248 @@
+# Static catalog of MCP tools used by the app
+# Source: docs/teradata-mcp-server (examples, tests, integration notes)
+# Purpose: provide stable, human-readable metadata for prompts and routing
+# Notes: arguments reflect server-side schemas at a high level (names/types)
+
+server: ${MCP_URL}
+version: 1
+
+# Each tool has: name, description, arguments (name, type, required), and notes (optional)
+tools:
+  # Base/schema
+  - name: base_databaseList
+    description: List all databases the server can access.
+    arguments: []
+  - name: base_tableList
+    description: List tables in a specified database; returns table names and basic metadata.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+  - name: base_columnDescription
+    description: Describe columns for a table, including column names and data types.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: obj_name
+        type: string
+        required: true
+  - name: base_tablePreview
+    description: Preview a small sample of rows from a table (read-only).
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+  - name: base_tableDDL
+    description: Return the CREATE TABLE DDL for a given table.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+  - name: base_tableAffinity
+    description: Show related/affinity objects for a table (usage relationships).
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: obj_name
+        type: string
+        required: true
+  - name: base_tableUsage
+    description: Summarize recent usage metrics for tables in a database.
+    arguments:
+      - name: database_name
+        type: string
+        required: false
+  - name: base_readQuery
+    description: Execute a read-only SQL query and return results (no mutations).
+    arguments:
+      - name: sql
+        type: string
+        required: true
+
+  # Data quality
+  - name: qlty_missingValues
+    description: Count missing/null values per column for the given table.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+  - name: qlty_distinctCategories
+    description: List distinct values/categories and their counts for a specific column.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+      - name: column_name
+        type: string
+        required: true
+  - name: qlty_univariateStatistics
+    description: Compute univariate statistics for a numeric column (min, max, mean, std, percentiles).
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+      - name: column_name
+        type: string
+        required: true
+  - name: qlty_columnSummary
+    description: Provide a concise data quality summary for columns in a table.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+  - name: qlty_negativeValues
+    description: Identify negative values in numeric columns for a table.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+  - name: qlty_rowsWithMissingValues
+    description: Return rows where a specific column has missing/null values.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+      - name: column_name
+        type: string
+        required: true
+  - name: qlty_standardDeviation
+    description: Compute standard deviation for a specified column.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+      - name: column_name
+        type: string
+        required: true
+
+  # DBA/System
+  - name: dba_databaseSpace
+    description: Report space usage for a database (DB-level metrics).
+    arguments:
+      - name: database_name
+        type: string
+        required: false
+  - name: dba_tableSpace
+    description: Report space usage for a table.
+    arguments:
+      - name: database_name
+        type: string
+        required: true
+      - name: table_name
+        type: string
+        required: true
+  - name: dba_databaseVersion
+    description: Return the database version information.
+    arguments: []
+  - name: dba_sessionInfo
+    description: List active sessions for a user.
+    arguments:
+      - name: user_name
+        type: string
+        required: true
+  - name: dba_featureUsage
+    description: Summarize feature usage over a date range.
+    arguments:
+      - name: start_date
+        type: string
+        required: true
+      - name: end_date
+        type: string
+        required: true
+  - name: dba_flowControl
+    description: Report flow control metrics over a date range.
+    arguments:
+      - name: start_date
+        type: string
+        required: true
+      - name: end_date
+        type: string
+        required: true
+  - name: dba_resusageSummary
+    description: Summarize system resource usage.
+    arguments: []
+  - name: dba_tableSqlList
+    description: List recent SQL statements involving a given table.
+    arguments:
+      - name: table_name
+        type: string
+        required: true
+      - name: no_days
+        type: integer
+        required: false
+  - name: dba_tableUsageImpact
+    description: Summarize table usage and impact by database/user.
+    arguments:
+      - name: database_name
+        type: string
+        required: false
+      - name: user_name
+        type: string
+        required: false
+  - name: dba_userDelay
+    description: Report user delay metrics over a date range.
+    arguments:
+      - name: start_date
+        type: string
+        required: true
+      - name: end_date
+        type: string
+        required: true
+  - name: dba_userSqlList
+    description: List recent SQL statements executed by a user.
+    arguments:
+      - name: user_name
+        type: string
+        required: true
+      - name: no_days
+        type: integer
+        required: false
+
+  # Security
+  - name: sec_userDbPermissions
+    description: Show database permissions granted to a user.
+    arguments:
+      - name: user_name
+        type: string
+        required: true
+  - name: sec_rolePermissions
+    description: Show permissions granted to a role.
+    arguments:
+      - name: role_name
+        type: string
+        required: true
+  - name: sec_userRoles
+    description: List roles assigned to a user.
+    arguments:
+      - name: user_name
+        type: string
+        required: true

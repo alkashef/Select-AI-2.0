@@ -44,6 +44,11 @@ if "ai_instance" not in st.session_state:
     try:
         ai_impl = get_ai()
         st.session_state["ai_instance"] = ai_impl
+        # Warmup: pre-load schema snapshot if backend supports it
+        try:
+            getattr(ai_impl, "warmup", lambda: None)()
+        except Exception:
+            pass
         st.session_state["logger"].event(
             "ai.init", backend=ai_impl.__class__.__name__
         )
