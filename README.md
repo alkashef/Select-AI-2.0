@@ -150,16 +150,32 @@ Notes:
 - The NL test is SQL-ignorant; it only calls server tools and reads YAML.
 - If the server defaults to `demo_db`, update `rag_config.yml` or include the DB name in your NL question.
 
-## Logs and Tool Snapshots
+## Logs and MCP Tools Catalog
 
 - Logs:
-   - Default path is `logs/log.txt`. Configure via `LOG_FILE` in `config/.env`.
-   - Enable/disable with `LOG_ENABLED=true|false`.
+  - Default path is `logs/log.txt`. Configure via `LOG_FILE` in `config/.env`.
+  - Enable/disable with `LOG_ENABLED=true|false`.
 
-- MCP Tool Snapshots:
-   - On startup, the app snapshots available MCP tools to `config/tools_snapshot.json` and `config/tools_snapshot.yml`.
-   - Purpose: JSON is easy to parse and feed into programmatic flows; YAML is human-friendly for quick inspection and prompts.
-   - You can override paths via `TOOLS_SNAPSHOT_JSON` and `TOOLS_SNAPSHOT_YAML` in `config/.env`.
+- MCP Tools Catalog (static):
+   - The app reads a static, human-maintained catalog from `ai/mcp_tools.yml`.
+  - Override path via `MCP_TOOLS_CATALOG` env var if needed.
+  - This catalog lists MCP tool names, descriptions, and argument shapes; it's used to build the intent-gating prompt.
+
+### Simplified Intent Gate (OpenAI backend)
+
+When `AI_BACKEND=openai` and `MCP_URL` is set, the app uses a simplified plan-and-execute flow:
+
+1) Always ignore the table name `user_query`, plus any tables listed in `IGNORED_TABLES` (comma-separated) env var.
+2) The LLM sees a schema overview rendered as lines like:
+   - `Table: MY_TABLE`
+   - `Columns: c1, c2, c3`
+3) The LLM decides if the request is database-related. If yes, it returns a STRICT JSON plan selecting one or more MCP tools with arguments (it may infer missing args). If not, it returns a boundary message that the request is outside DB scope.
+4) The app executes the plan (HTTP MCP) and returns a concise human-readable summary in chat; the raw plan and tool results are written to the log file.
+
+Environment variables for this flow:
+- `MCP_URL` (required for execution) – e.g., `http://localhost:8001/mcp/`
+- `TD_NAME` (required for DB ops) – the only active database. The app will automatically set `database_name=TD_NAME` for tools that accept it.
+- `IGNORED_TABLES` (optional) – comma-separated list of table names to ignore at prompt and runtime. `user_query` is always ignored.
 
 ### Option B — STDIO (no separate server)
 

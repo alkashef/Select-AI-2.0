@@ -6,9 +6,7 @@
 server: ${MCP_URL}
 version: 1
 
-# Each tool has: name, description, arguments (name, type, required), and notes (optional)
 tools:
-  # Base/schema
   - name: base_databaseList
     description: List all databases the server can access.
     arguments: []
@@ -66,8 +64,6 @@ tools:
       - name: sql
         type: string
         required: true
-
-  # Data quality
   - name: qlty_missingValues
     description: Count missing/null values per column for the given table.
     arguments:
@@ -143,8 +139,6 @@ tools:
       - name: column_name
         type: string
         required: true
-
-  # DBA/System
   - name: dba_databaseSpace
     description: Report space usage for a database (DB-level metrics).
     arguments:
@@ -226,8 +220,6 @@ tools:
       - name: no_days
         type: integer
         required: false
-
-  # Security
   - name: sec_userDbPermissions
     description: Show database permissions granted to a user.
     arguments:

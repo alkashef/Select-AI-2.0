@@ -7,7 +7,6 @@ Responsibility:
 
 from .base import AI
 from .gpt import AI_GPT
-from .openai import AI_OpenAI
 from config import get_ai_backend
 
 
@@ -33,5 +32,7 @@ def get_ai() -> AI:
     if backend == "gpt":
         return AI_GPT()
     if backend == "openai":
+        # Lazy import to avoid heavy deps unless actually needed
+        from .openai import AI_OpenAI  # type: ignore
         return AI_OpenAI()
     raise ValueError(f"Unknown AI backend: {backend}")
