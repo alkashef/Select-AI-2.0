@@ -16,6 +16,7 @@ Notes:
 from __future__ import annotations
 import datetime as dt
 import html
+import re
 from typing import Dict, List
 from pathlib import Path as _Path
 from ai.base import Message, AI
@@ -82,14 +83,24 @@ if _css_path.exists():
 # Optional: place for page-specific CSS hooks (kept minimal)
 
 def _render_chat(messages: List[Message]) -> None:
-    bubbles: list[str] = []
+    """Render chat using Streamlit's chat_message with Markdown.
+
+    Benefits:
+    - Proper Markdown rendering (lists, code blocks, inline formatting).
+    - Streamlit handles spacing sensibly, reducing excessive blank lines.
+    """
+    def _normalize(text: str) -> str:
+        # Keep a light normalization to avoid massive blank sections
+        s = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+        return re.sub(r"\n{3,}", "\n\n", s)
+
     for msg in messages:
         role = msg.get("role", "ai")
-        content = msg.get("content", "")
-        safe = html.escape(content)
-        cls = "user" if role == "user" else "ai"
-        bubbles.append(f'<div class="msg {cls}"><div class="content">{safe}</div></div>')
-    st.markdown(f'<div class="chat-feed">{"".join(bubbles)}</div>', unsafe_allow_html=True)
+        content = _normalize(msg.get("content", ""))
+        # Map roles for Streamlit chat UI
+        chat_role = "user" if role == "user" else "assistant"
+        with st.chat_message(chat_role):
+            st.markdown(content)
 
 # Initial chat render
 _render_chat(st.session_state["messages"])  # type: ignore[arg-type]
