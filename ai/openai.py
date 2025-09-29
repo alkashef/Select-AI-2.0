@@ -22,10 +22,21 @@ class AI_OpenAI(AI):
         key_suffix=self.api_key[-6:] if self.api_key else ""
         ChatLogger().event("ai_gpt.init", model=self.model, key_suffix=key_suffix)
 
+
     def generate_reply(self, messages: List[Message], context: Dict | None = None) -> str:
         """Generate an assistant reply using OpenAI with MCP tool calls."""
         #raise NotImplementedError
         return "NOT IMPLEMENTED YET"
+
+
+    def _build_openai_client(self, api_key: str) -> Any:
+        """Create and return the OpenAI client instance.
+
+        This is isolated for easy replacement (e.g., mocked client in tests).
+        """
+        # TODO: return OpenAI(api_key=api_key)
+        #raise NotImplementedError
+
 
     def _complete(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Call the OpenAI Chat Completions API once and return the raw response.
@@ -34,10 +45,12 @@ class AI_OpenAI(AI):
         # TODO: call self._client.chat.completions.create(...)
         raise NotImplementedError
 
+
     def _has_tool_calls(self, response: Dict[str, Any]) -> bool:
         """Return True if the model response contains any tool calls."""
         # TODO: inspect response.choices[0].message.tool_calls
         raise NotImplementedError
+
 
     def _extract_tool_calls(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract and return a list of tool call dicts from the response.
@@ -47,6 +60,7 @@ class AI_OpenAI(AI):
         """
         # TODO: parse response and return a normalized list
         raise NotImplementedError
+
 
     def _dispatch_tool_call(self, tool_call: Dict[str, Any]) -> str:
         """Invoke the MCP tool via `self.mcp.call_tool` and return text content.
@@ -59,9 +73,18 @@ class AI_OpenAI(AI):
         # TODO: if dict, return json.dumps(result)
         raise NotImplementedError
 
+
     def _append_tool_exchange(
         self,
         messages: List[Dict[str, Any]],
         tool_call_id: str,
         tool_result_text: str,
     ) -> None:
+        """Append the assistant's tool call marker and the tool result message.
+
+        OpenAI expects a pair:
+        - assistant message that references the tool call ("tool_calls"), and
+        - a subsequent message with role="tool" including the `tool_call_id`.
+        """
+        # TODO: messages.append({...tool_calls: [...]}); messages.append({...})
+        raise NotImplementedError
