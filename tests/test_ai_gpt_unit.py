@@ -5,7 +5,7 @@ sys.path.insert(0, abspath(join(dirname(__file__), "..")))
 
 import types
 
-from ai.gpt import AI_GPT
+from ai.openai import AI_OpenAI
 
 
 class _FakeChoiceMsg:
@@ -53,7 +53,7 @@ def test_ai_gpt_happy_path(monkeypatch):
 
     monkeypatch.setattr(gpt_mod, "get_openai_config", _fake_cfg)
 
-    ai = AI_GPT()
+    ai = AI_OpenAI()
     reply = ai.generate_reply([{"role": "user", "content": "hi"}])
     assert reply == "hello from fake"
 
@@ -67,6 +67,6 @@ def test_ai_gpt_retries_once_and_succeeds(monkeypatch):
 
     monkeypatch.setattr(gpt_mod, "get_openai_config", _fake_cfg)
 
-    ai = AI_GPT()
+    ai = AI_OpenAI()
     reply = ai.generate_reply([{"role": "user", "content": "retry?"}])
     assert reply == "recovered"

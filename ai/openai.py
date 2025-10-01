@@ -1,90 +1,100 @@
-"""OpenAI + MCP backend (scaffold).
+"""OpenAI Chat Completions backend.
 
-Current state: minimal scaffold with a no-op generate_reply. Cleaned of
-unused imports and attributes pending a future implementation.
+Responsibilities:
+- Initialize an OpenAI client from env via config.get_openai_config().
+- Map app roles ("user"/"ai"/"system") to OpenAI roles ("user"/"assistant"/"system").
+- Call chat.completions.create and return the assistant's content.
+- Emit lightweight events for diagnostics (init, call, call.error).
+- Retry transient failures with simple exponential backoff.
 """
-from __future__ import annotations
-from typing import Any, Dict, List
-from .base import AI, Message
-from openai import OpenAI
+
+from typing import Any
+import time
 from config import get_openai_config
 from logger import ChatLogger
+from .base import AI, Message
+import os
+
 
 class AI_OpenAI(AI):
+    """Concrete AI implementation using OpenAI Chat Completions models.
+
+    Configuration is sourced from :func:`config.get_openai_config` which returns
+    the API key, model name (e.g., ``gpt-4o``), and a configured OpenAI client.
+    """
+
     def __init__(self, config: Any = None) -> None:
         super().__init__(config)
         cfg = get_openai_config()
-        self.model = cfg.get("model", "gpt-4o")
-        self.api_key = cfg.get("api_key", "")
-        self.tools_catalog = cfg.get("tools_catalog", [])
-        self.mcp = cfg.get("mcp_client", None)
-        self._client = self._build_openai_client(self.api_key)
-        key_suffix=self.api_key[-6:] if self.api_key else ""
-        ChatLogger().event("ai_gpt.init", model=self.model, key_suffix=key_suffix)
+        self.api_key = cfg["api_key"]
+        self.model = cfg["model"]
+        self.client = cfg["client"]
+        try:
+            ChatLogger().event(
+                "ai_openai.init", model=self.model, key_suffix=self.api_key[-6:] if self.api_key else ""
+            )
+        except Exception:
+            pass
 
+    def generate_reply(self, messages: list[Message], context: dict | None = None) -> str:
+        """Generate an assistant reply using OpenAI Chat Completions.
 
-    def generate_reply(self, messages: List[Message], context: Dict | None = None) -> str:
-        """Generate an assistant reply using OpenAI with MCP tool calls."""
-        #raise NotImplementedError
-        return "NOT IMPLEMENTED YET"
-
-
-    def _build_openai_client(self, api_key: str) -> Any:
-        """Create and return the OpenAI client instance.
-
-        This is isolated for easy replacement (e.g., mocked client in tests).
+        Notes:
+        - Unknown roles are coerced to "user".
+        - App's internal role "ai" is translated to OpenAI's "assistant".
+        - Empty/whitespace-only contents are skipped.
+        - Retries up to 3 times on exceptions with backoff (0.5s, 1s).
         """
-        # TODO: return OpenAI(api_key=api_key)
-        #raise NotImplementedError
+        if not messages:
+            return ""
 
+        chat_messages: list[dict] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if not content:
+                continue
+            if role == "ai":
+                role = "assistant"
+            elif role not in ("user", "system", "assistant"):
+                role = "user"
+            chat_messages.append({"role": role, "content": content})
 
-    def _complete(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Call the OpenAI Chat Completions API once and return the raw response.
-        Should pass `self.tools_catalog` and `tool_choice="auto"`.
-        """
-        # TODO: call self._client.chat.completions.create(...)
-        raise NotImplementedError
+        if not chat_messages:
+            return ""
 
+        try:
+            ChatLogger().event("ai_openai.call", model=self.model, msgs=str(len(chat_messages)))
+        except Exception:
+            pass
 
-    def _has_tool_calls(self, response: Dict[str, Any]) -> bool:
-        """Return True if the model response contains any tool calls."""
-        # TODO: inspect response.choices[0].message.tool_calls
-        raise NotImplementedError
+        # Retry transient connection errors a few times with backoff
+        # Read temperature from env (default 0)
+        try:
+            temperature = float(os.getenv("GPT_TEMPERATURE", "0").strip())
+        except ValueError:
+            temperature = 0.0
 
-
-    def _extract_tool_calls(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract and return a list of tool call dicts from the response.
-
-        Each item should include at least: id, function.name, function.arguments
-        (arguments as a JSON string or already-parsed dict depending on caller).
-        """
-        # TODO: parse response and return a normalized list
-        raise NotImplementedError
-
-
-    def _dispatch_tool_call(self, tool_call: Dict[str, Any]) -> str:
-        """Invoke the MCP tool via `self.mcp.call_tool` and return text content.
-
-        Contract: the Teradata MCP client returns either a dict or a string.
-        This method should coerce that into a string suitable for a `tool`
-        message content in OpenAI format.
-        """
-        # TODO: name = ..., args = ..., result = self.mcp.call_tool(name, args)
-        # TODO: if dict, return json.dumps(result)
-        raise NotImplementedError
-
-
-    def _append_tool_exchange(
-        self,
-        messages: List[Dict[str, Any]],
-        tool_call_id: str,
-        tool_result_text: str,
-    ) -> None:
-        """Append the assistant's tool call marker and the tool result message.
-
-        OpenAI expects a pair:
-        - assistant message that references the tool call ("tool_calls"), and
-        - a subsequent message with role="tool" including the `tool_call_id`.
-        """
-        # TODO: messages.append({...tool_calls: [...]}); messages.append({...})
-        raise NotImplementedError
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                resp = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=chat_messages,
+                    temperature=temperature,
+                )
+                break
+            except Exception as e:  # Broad catch to avoid SDK version issues
+                last_err = e
+                try:
+                    ChatLogger().event(
+                        "ai_openai.call.error", error=f"{e.__class__.__name__}: {e}", attempt=str(attempt + 1)
+                    )
+                except Exception:
+                    pass
+                if attempt < 2:
+                    time.sleep(0.5 * (2 ** attempt))
+                else:
+                    raise
+        msg = resp.choices[0].message
+        return getattr(msg, "content", "") or ""

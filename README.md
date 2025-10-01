@@ -32,7 +32,7 @@ Key features:
 - Core Application: `app.py` – Streamlit UI and chat loop
 - AI Interface: `ai/base.py` – abstract contract `AI`
 - AI Factory: `ai/factory.py` – selects and constructs the backend
-- OpenAI Backend: `ai/gpt.py` – `AI_GPT` implementation
+- OpenAI Backend: `ai/openai.py` – `AI_OpenAI` implementation
 - Configuration: `config.py`, `config/.env`, `config/.env.example`
 - Logging: `logger.py` (writes to `logs/log.txt` by default when enabled)
 

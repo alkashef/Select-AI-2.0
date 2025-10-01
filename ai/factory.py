@@ -6,7 +6,8 @@ Responsibility:
 """
 
 from .base import AI
-from .gpt import AI_GPT
+from .openai import AI_OpenAI
+from .mcp_openai import AI_MCP_OpenAI
 from config import get_ai_backend
 
 
@@ -14,8 +15,9 @@ def get_ai() -> AI:
     """Construct and return a concrete :class:`AI` backend based on ``AI_BACKEND``.
 
     Currently supported values:
-    - "gpt": :class:`ai.gpt.AI_GPT`
+    - "gpt": :class:`ai.openai.AI_OpenAI`
     - "openai": :class:`ai.openai.AI_OpenAI`
+    - "mcp_openai": :class:`ai.mcp_openai.AI_MCP_OpenAI`
 
     Returns
     -------
@@ -29,10 +31,8 @@ def get_ai() -> AI:
         ChatLogger().event("ai.backend.select", backend=backend)
     except Exception:
         pass
-    if backend == "gpt":
-        return AI_GPT()
-    if backend == "openai":
-        # Lazy import to avoid heavy deps unless actually needed
-        from .openai import AI_OpenAI  # type: ignore
+    if backend in ("gpt", "openai"):
         return AI_OpenAI()
+    if backend == "mcp_openai":
+        return AI_MCP_OpenAI()
     raise ValueError(f"Unknown AI backend: {backend}")

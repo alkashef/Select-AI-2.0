@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(
 
 # Ensure project root is on sys.path when running via pytest from subfolders
 sys.path.insert(0, abspath(join(dirname(__file__), "..")))
-from ai.gpt import AI_GPT
+from ai.openai import AI_OpenAI
 
 
 def test_generate_reply_real_client_contains_cairo():
@@ -26,7 +26,7 @@ def test_generate_reply_real_client_contains_cairo():
     if not os.getenv("GPT_MODEL"):
         pytest.skip("GPT_MODEL is not set; skipping real-client integration test.")
 
-    ai = AI_GPT()
+    ai = AI_OpenAI()
     messages = [{"role": "user", "content": "what is the capitol of Egypt?"}]
     reply = ai.generate_reply(messages)
 
