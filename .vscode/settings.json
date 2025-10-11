@@ -1,0 +1,11 @@
+
+{
+  "python.defaultInterpreterPath": "C:\\Users\\aa186095\\AppData\\Local\\anaconda3\\envs\\select-ai-2.0\\python.exe",
+  "terminal.integrated.defaultProfile.windows": "Command Prompt (Conda)",
+  "terminal.integrated.profiles.windows": {
+    "Command Prompt (Conda)": {
+      "path": "C:\\Windows\\System32\\cmd.exe",
+      "args": ["/K", "C:\\Users\\aa186095\\AppData\\Local\\anaconda3\\Scripts\\activate.bat select-ai-2.0"]
+    }
+  }
+}

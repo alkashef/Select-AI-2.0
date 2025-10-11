@@ -1,165 +1,232 @@
-"""Select AI 2.0 Streamlit chat app.
-
-Responsibilities:
-- UI: Render a minimal chat interface and branded sidebar.
-- State: Manage session-level messages, logger, and AI instance.
-- Backend: Obtain an `AI` implementation via ``ai.factory.get_ai()`` and call
-    ``AI.generate_reply``; the concrete backend adheres to the ``AI`` interface.
-- Telemetry: Emit lightweight events around initialization and AI calls.
-
-Notes:
-- Sidebar includes optional environment diagnostics to help identify interpreter
-    and package issues (Python path/version and OpenAI SDK availability).
-- Styling is loaded from ``assets/styles.css`` if present.
-"""
-
-from __future__ import annotations
-import datetime as dt
-import html
-import re
-from typing import Dict, List
-from pathlib import Path as _Path
-from ai.base import Message, AI
+from PIL import Image
 import streamlit as st
-from ai import get_ai
-from logger import ChatLogger
+from dotenv import load_dotenv
 
+import os
+import asyncio
+import datetime as dt
+from typing import List
 
-# --- Page setup ---
-st.set_page_config(
-    page_title="Select AI 2.0",
-    page_icon="💬", 
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+from backend import EventLoopThread, Message, Agent, get_ai, logger
+from constants import ENV_PATH
+from constants import TERADATA_LOGO_PATH, CHARTS_PATH
 
-# --- Constants ---
+load_dotenv(ENV_PATH)
+
 MAX_MESSAGES: int = 100  # Cap in-memory history length
 
-# --- Session state init ---
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []  # type: List[Message]
-if "logger" not in st.session_state:
-    st.session_state["logger"] = ChatLogger()
-if "ai_instance" not in st.session_state:
-    try:
-        ai_impl = get_ai()
-        st.session_state["ai_instance"] = ai_impl
-        # Warmup: pre-load schema snapshot if backend supports it
-        try:
-            getattr(ai_impl, "warmup", lambda: None)()
-        except Exception:
-            pass
-        st.session_state["logger"].event(
-            "ai.init", backend=ai_impl.__class__.__name__
-        )
-    except Exception as _e:
-        st.session_state["logger"].event("ai.init.error", error=str(_e))
+def get_or_create_event_loop():
+    """Get or create the persistent event loop thread."""
+    if "event_loop" not in st.session_state:
+        elt = EventLoopThread()
+        elt.start()
+        st.session_state["event_loop"] = elt
+
+    return st.session_state["event_loop"]
+
+
+# -------------------------------------------------------------------------
+# SESSION STATE INITIALIZATION
+# -------------------------------------------------------------------------
+def init_session_state() -> None:
+    """Initialize session state with messages, logger, and AI instance."""
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = []  # type: List[Message] # type: ignore
+
+    # Initialize ai_instance key first to avoid KeyError
+    if "ai_instance" not in st.session_state:
         st.session_state["ai_instance"] = None
 
-# --- Left sidebar (collapsible) ---
-with st.sidebar:
-    # Logo at the top of the sidebar
-    _logo_path = _Path(__file__).parent / "assets" / "td_new_trans.png"
-    if _logo_path.exists():
-        st.image(str(_logo_path))
-
-    st.title("Select AI 2.0")
-    st.markdown(
-        (
-            "<div class=\"sidebar-desc\" style=\"color:#888;\">"
-            "<p>Select AI is an intelligent business assistant that replaces traditional dashboards by allowing executives and business users to get instant insights through conversation. Instead of navigating reports, users simply ask questions in plain English, and Select AI generates answers directly from enterprise data—powered by Teradata’s MCP.</p>"
-            "</div>"
-        ),
-        unsafe_allow_html=True,
-    )
-
-# --- Styles (align user right, assistant left; no avatars) ---
-# Load external CSS if present
-_css_path = _Path(__file__).parent / "assets" / "styles.css"
-if _css_path.exists():
-    st.markdown(f"<style>{_css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+    # Initialize event loop
+    get_or_create_event_loop()
     
-# Optional: place for page-specific CSS hooks (kept minimal)
+    # Only initialize AI if it hasn't been initialized yet
+    if st.session_state["ai_instance"] is None:
+        try:
+            loop = st.session_state["event_loop"]
+            ai_impl = loop.run_coroutine(get_ai())
+            st.session_state["ai_instance"] = ai_impl
+            # Warmup: optional
+            warmup_func = getattr(ai_impl, "warmup", None)
+            if warmup_func and asyncio.iscoroutinefunction(warmup_func):
+                loop = st.session_state["event_loop"]
+                loop.run_coroutine(warmup_func())
+            elif warmup_func:
+                warmup_func()
+            logger.event("ai.init", backend=ai_impl.__class__.__name__)
+        except Exception as e:
+            logger.event("ai.init.error", error=str(e))
+            st.session_state["ai_instance"] = None
 
-def _render_chat(messages: List[Message]) -> None:
-    """Render chat using Streamlit's chat_message with Markdown.
 
-    Benefits:
-    - Proper Markdown rendering (lists, code blocks, inline formatting).
-    - Streamlit handles spacing sensibly, reducing excessive blank lines.
-    """
+# -------------------------------------------------------------------------
+# SIDEBAR RENDERING
+# -------------------------------------------------------------------------
+def render_sidebar() -> None:
+    """Render the left sidebar with branding and description."""
+    with st.sidebar:
+        if TERADATA_LOGO_PATH.exists():
+            st.image(str(TERADATA_LOGO_PATH))
+
+        st.title("Select AI 2.0")
+
+        st.markdown(
+            (
+                "<div class=\"sidebar-desc\" style=\"color:#888;\">"
+                    "<p>"
+                    "Select AI 2.0 is an AI for BI assistant that replaces dashboards, "
+                    "letting executives and business users ask questions in plain English and get instant answers from enterprise data, "
+                    "seamlessly connected to Vantage via TD MCP server."
+                    "</p>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+
+# -------------------------------------------------------------------------
+# CHAT RENDERING
+# -------------------------------------------------------------------------
+def render_chat(messages: List[Message]) -> None:
+    """Render chat messages in Streamlit UI."""
+    import re
+
     def _normalize(text: str) -> str:
-        # Keep a light normalization to avoid massive blank sections
         s = text.replace("\r\n", "\n").replace("\r", "\n").strip()
         return re.sub(r"\n{3,}", "\n\n", s)
 
     for msg in messages:
         role = msg.get("role", "ai")
         content = _normalize(msg.get("content", ""))
-        # Map roles for Streamlit chat UI
         chat_role = "user" if role == "user" else "assistant"
+        
         with st.chat_message(chat_role):
             st.markdown(content)
+            
+            # If this AI message has an associated chart, display it
+            if role == "ai" and "chart" in msg:
+                st.image(msg["chart"], width=650)
 
-# Initial chat render
-_render_chat(st.session_state["messages"])  # type: ignore[arg-type]
 
-# --- Input & send ---
-prompt = st.chat_input("Type a message and press Enter")
-if prompt is not None:
+# -------------------------------------------------------------------------
+# AI MESSAGE HANDLING
+# -------------------------------------------------------------------------
+async def generate_ai_reply(backend: Agent, history: List[Message]) -> tuple[str, bool]:
+    """Generate a reply from the AI backend for the provided history."""
+
+    logger.event("ai.call.start", count=str(len(history)))
+    reply_text, is_plot = await backend.generate_reply(history)
+    logger.event("ai.call.end", chars=str(len(reply_text or "")))
+    return reply_text, is_plot
+
+
+def handle_user_input(prompt: str) -> None:
+    """Handle user input and update session state."""
     text = prompt.strip()
-    if text:
-        # Append user message
-        user_msg = {
-            "role": "user",
-            "content": text,
-            # Timestamp is currently unused in UI but kept for future needs
+    if not text:
+        return
+
+    # Check if AI is initialized before processing
+    if st.session_state.get("ai_instance") is None:
+        st.error("AI backend is still initializing. Please wait a moment and try again.")
+        return
+
+    # Add user message
+    user_msg = {
+        "role": "user",
+        "content": text,
+        "ts": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+    }
+    st.session_state["messages"].append(user_msg)
+    logger.log(user_msg["role"], user_msg["content"])
+
+    loop_thread = st.session_state.get("event_loop")
+    ai_backend = st.session_state.get("ai_instance")
+
+    if ai_backend is None or loop_thread is None:
+        st.error("AI backend not initialized. Please refresh the app.")
+        return
+
+    chart_image = None
+    history = list(st.session_state["messages"])
+    
+    try:
+        with st.spinner("Thinking..."):
+            reply, is_plot = loop_thread.run_coroutine(
+                generate_ai_reply(ai_backend, history)
+            )
+            
+            # Handle chart generation
+            if is_plot:
+                try:
+                    charts = os.listdir(CHARTS_PATH)
+                    if charts:
+                        # Get the most recently created chart
+                        chart_files = [os.path.join(str(CHARTS_PATH), f) for f in charts]
+                        chart_path = max(chart_files, key=os.path.getctime)
+                        
+                        # Load the image using PIL
+                        with Image.open(chart_path) as img:
+                            chart_image = img.copy()
+                        
+                        # Optionally clean up the file after loading
+                        try:
+                            os.remove(chart_path)
+                        except Exception as cleanup_error:
+                            print(f"Warning: Could not delete chart file: {cleanup_error}")
+                            
+                except Exception as chart_error:
+                    print(f"Error loading chart: {chart_error}")
+                    st.warning(f"Could not load chart: {chart_error}")
+
+    except Exception as e:
+        st.error(f"Couldn't get a reply: {e}")
+        ai_msg = {
+            "role": "ai",
+            "content": f"[error] {e}",
             "ts": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         }
-        st.session_state["messages"].append(user_msg)
-        st.session_state["logger"].log(user_msg["role"], user_msg["content"])
+    else:
+        ai_msg = {
+            "role": "ai",
+            "content": reply if (reply and reply.strip()) else "[empty response]",
+            "ts": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        }
+        
+        # Attach the chart to the message if one was generated
+        if chart_image is not None:
+            ai_msg["chart"] = chart_image
 
-        # Generate AI reply with narrower exception surface
-        if st.session_state.get("ai_instance") is None:
-            try:
-                st.session_state["ai_instance"] = get_ai()
-            except Exception as e:
-                st.session_state["logger"].event("ai.init.error", error=str(e))
-                st.error(f"Couldn't initialize AI backend: {e}")
-                st.rerun()
+    st.session_state["messages"].append(ai_msg)
+    logger.log(ai_msg["role"], ai_msg["content"])
 
-        try:
-            with st.spinner("Thinking..."):
-                logger = st.session_state["logger"]
-                logger.event("ai.call.start", count=str(len(st.session_state["messages"])) )
-                backend: AI = st.session_state["ai_instance"]  # type: ignore[assignment]
-                reply = backend.generate_reply(st.session_state["messages"], context=None)  # type: ignore[arg-type]
-                logger.event("ai.call.end", chars=str(len(reply or "")))
-        except Exception as e:
-            st.error(f"Couldn't get a reply: {e}")
-            # Also append an AI message so the chat always shows something
-            ai_msg = {
-                "role": "ai",
-                "content": f"[error] {e}",
-                "ts": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
-            }
-            st.session_state["messages"].append(ai_msg)
-            st.session_state["logger"].log(ai_msg["role"], ai_msg["content"])
-            # Re-render and stop
-            st.rerun()
-        else:
-            ai_msg = {
-                "role": "ai",
-                "content": reply if (reply and reply.strip()) else "[empty response]",
-                "ts": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
-            }
-            st.session_state["messages"].append(ai_msg)
-            st.session_state["logger"].log(ai_msg["role"], ai_msg["content"])
+    # Enforce message cap
+    if len(st.session_state["messages"]) > MAX_MESSAGES:
+        st.session_state["messages"] = st.session_state["messages"][-MAX_MESSAGES:]
 
-            # Enforce cap (keep most recent messages)
-            if len(st.session_state["messages"]) > MAX_MESSAGES:
-                st.session_state["messages"] = st.session_state["messages"][-MAX_MESSAGES:]
+    st.rerun()
 
-        # Re-render immediately so the new messages show up
-        st.rerun()
+
+# -------------------------------------------------------------------------
+# MAIN APP
+# -------------------------------------------------------------------------
+def main():
+    st.set_page_config(page_title="Select AI 2.0", page_icon="💬", layout="wide")
+    init_session_state()
+
+    render_sidebar()
+    
+    # Show loading state if AI is not ready
+    if st.session_state.get("ai_instance") is None:
+        with st.spinner("Initializing AI backend..."):
+            st.info("Please wait while the AI backend is being initialized.")
+    
+    render_chat(st.session_state["messages"])
+
+    prompt = st.chat_input("Type a message and press Enter")
+    if prompt:
+        handle_user_input(prompt)
+
+
+if __name__ == "__main__":
+    main()

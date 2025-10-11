@@ -1,0 +1,19 @@
+display 10 branches
+what is the sum of all deposits of all the branches in Ohio?
+how many transactions where made in Ohio?
+what is the branch where the single biggest transaction amount took place
+Which branches have a total transaction amount over 10000 USD?
+List all branch names.
+Show the governorate of the branch named "East Scott".
+Display the latitude and longitude of branch ID 5.
+How many transactions were made by branch ID 10?
+What is the total transaction amount for each branch?
+List the names of all branches that had at least one transaction in USD.
+Show each governorate with the total number of transactions and their total amount.
+List all branches that had both "deposit" and "withdrawal" transactions.
+What is the highest transaction per branch?
+List all branches and the total value of transactions
+What is the most contributor branch to our total transaction?
+List total transaction per GOVERNORATE?
+List total transaction per transaction type per branch
+What is the avg transaction value?
