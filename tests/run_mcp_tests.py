@@ -494,6 +494,12 @@ class MCPTestRunner:
 
 async def main():
     """Main entry point."""
+    # sys.argv.append([
+    #     "python", 
+    #     "tests/run_mcp_tests.py", 
+    #     "teradata-mcp-server --mcp_transport stdio --mcp_port 1025 --profile all --database_uri teradata://demo_user:mcp-agent-123@mcp-agent-72i0y48cfm1eb812.env.clearscape.teradata.com:1025/BANK_DB",
+
+    # ])
     if len(sys.argv) < 2:
         print("Usage: python tests/run_mcp_tests.py <server_command> [test_cases_file1] [test_cases_file2] [...] [--verbose]")
         print("Examples:")
@@ -503,7 +509,9 @@ async def main():
         print("  python tests/run_mcp_tests.py 'uv run teradata-mcp-server' tests/evs_test_cases.json --verbose")
         sys.exit(1)
 
+    print(f"Here is {sys.argv}")
     server_command = sys.argv[1].split()
+    print(f"Server command: {server_command}")
 
     test_cases_files = []
     verbose = "--verbose" in sys.argv

@@ -1,4 +1,6 @@
-.env
-**/__pycache__/*
-charts/*
-tests/test-reports/
+config/.env
+**/__pycache__/
+charts/
+logs/
+.vscode/
+.venv/
