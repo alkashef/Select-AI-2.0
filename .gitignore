@@ -4,3 +4,4 @@ charts/
 logs/
 .vscode/
 .venv/
+tests/test_reports/
