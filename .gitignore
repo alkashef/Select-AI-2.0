@@ -1,7 +1,7 @@
 config/.env
 **/__pycache__/
 charts/
-logs/
+logs/*
 .vscode/
 .venv/
-tests/test_reports/
+tests/test-reports/*
